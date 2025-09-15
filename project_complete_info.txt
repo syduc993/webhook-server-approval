@@ -1,0 +1,3795 @@
+================================================================================
+THÔNG TIN DỰ ÁN HOÀN CHỈNH
+================================================================================
+Thời gian tạo: 2025-09-15 15:59:24
+Thư mục gốc: d:\Atino\extension\webhook-server-approval
+================================================================================
+
+📁 CẤU TRÚC THU MỤC
+--------------------------------------------------
+├── 📁 app/
+│   ├── 📁 config/
+│   │   ├── 📄 node_config.py
+│   │   └── 📄 settings.py
+│   ├── 📁 models/
+│   │   ├── 📄 approval.py
+│   │   ├── 📄 event.py
+│   │   └── 📄 response.py
+│   ├── 📁 routers/
+│   │   ├── 📄 config.py
+│   │   ├── 📄 debug.py
+│   │   ├── 📄 manual.py
+│   │   └── 📄 webhook.py
+│   ├── 📁 services/
+│   │   ├── 📄 cache_service.py
+│   │   ├── 📄 lark_service.py
+│   │   ├── 📄 qr_processor.py
+│   │   ├── 📄 validation_service.py
+│   │   └── 📄 vietqr_service.py
+│   ├── 📁 utils/
+│   │   ├── 📄 amount_detector.py
+│   │   ├── 📄 field_extractor.py
+│   │   └── 📄 helpers.py
+├── 📄 .gitignore
+├── 📄 Dockerfile
+├── 📄 Get detail code.ipynb
+├── 📄 project_complete_info.txt
+├── 📄 README.md
+└── 📄 requirements.txt
+
+
+📄 DANH SÁCH TẤT CẢ FILE
+--------------------------------------------------
+.gitignore (594 bytes)
+app\config\node_config.py (2877 bytes)
+app\config\settings.py (1261 bytes)
+app\models\approval.py (1584 bytes)
+app\models\event.py (899 bytes)
+app\models\response.py (1015 bytes)
+app\routers\config.py (1637 bytes)
+app\routers\debug.py (3444 bytes)
+app\routers\manual.py (2574 bytes)
+app\routers\webhook.py (1789 bytes)
+app\services\cache_service.py (4384 bytes)
+app\services\lark_service.py (8266 bytes)
+app\services\qr_processor.py (15166 bytes)
+app\services\validation_service.py (8994 bytes)
+app\services\vietqr_service.py (3010 bytes)
+app\utils\amount_detector.py (10152 bytes)
+app\utils\field_extractor.py (4442 bytes)
+app\utils\helpers.py (2198 bytes)
+Dockerfile (726 bytes)
+Get detail code.ipynb (9345 bytes)
+project_complete_info.txt (0 bytes)
+README.md (779 bytes)
+requirements.txt (136 bytes)
+
+Tổng cộng: 23 file
+
+💻 NỘI DUNG TẤT CẢ FILE CODE
+================================================================================
+
+============================================================
+FILE: app\config\node_config.py
+============================================================
+"""Node configuration for different approval workflows"""
+
+NODE_CONFIG = {
+    "30e5338b60587c64c7cef5f6a7211ccb": {
+        "name": "truong_phong_duyet",
+        "type": "dual_detection",
+        "advance_field": "Số tiền tạm ứng",
+        "payment_field": "Số tiền thanh toán",
+        "strategy": "detect_both_fields",
+        "required_status": "PENDING",
+        "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+    },
+    "f23535375a26847ef71c1cbf0755f246": {
+        "name": "thanh_toan_sau_tam_ung", 
+        "type": "payment_only",
+        "advance_field": None,
+        "payment_field": "Số tiền còn phải thanh toán",
+        "strategy": "payment_field_only",
+        "required_status": "APPROVED",
+        "additional_conditions": [
+            {
+                "node_id": "ef83b231885a1a77658f32808a199764",
+                "required_status": "PENDING",
+                "description": "Node tiếp theo phải PENDING"
+            }
+        ],
+        "description": "Thanh toán sau tạm ứng - Payment only (trigger on APPROVED + next node PENDING)"
+    }
+}
+
+def get_node_config(node_id: str) -> dict:
+    """
+    Lấy configuration cho một node_id cụ thể
+    
+    Args:
+        node_id (str): Node ID cần lấy config
+        
+    Returns:
+        dict: Node config hoặc None nếu không tìm thấy
+    """
+    return NODE_CONFIG.get(node_id)
+
+def get_node_strategy(node_id: str) -> str:
+    """
+    Lấy strategy của một node
+    
+    Args:
+        node_id (str): Node ID
+        
+    Returns:
+        str: Strategy name hoặc "unknown" nếu không tìm thấy
+    """
+    config = get_node_config(node_id)
+    return config.get("strategy", "unknown") if config else "unknown"
+
+def print_node_config_summary():
+    """Print summary của NODE_CONFIG với additional conditions"""
+    print("📋 NODE_CONFIG Summary:")
+    for node_id, config in NODE_CONFIG.items():
+        required_status = config.get('required_status', 'PENDING')
+        additional_conditions = config.get('additional_conditions', [])
+        
+        print(f"   • {node_id[:8]}... - {config['name']} ({config['strategy']})")
+        print(f"     Fields: advance='{config['advance_field']}', payment='{config['payment_field']}'")
+        print(f"     Required Status: {required_status}")
+        
+        if additional_conditions:
+            print(f"     Additional Conditions:")
+            for condition in additional_conditions:
+                print(f"       - {condition['node_id'][:8]}... must be {condition['required_status']}")
+
+def get_configured_node_ids():
+    """Trả về list tất cả node IDs được cấu hình"""
+    return list(NODE_CONFIG.keys())
+
+# Backward compatibility
+ALLOWED_NODE_IDS = get_configured_node_ids()
+
+============================================================
+
+============================================================
+FILE: app\config\settings.py
+============================================================
+import os
+from typing import Optional
+
+class Settings:
+    # FastAPI settings
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    PORT: int = int(os.getenv("PORT", "8000"))
+    
+    # Lark API settings
+    LARK_APP_ID: str = os.getenv("LARK_APP_ID", "cli_a758ffaf41f8502f")
+    LARK_APP_SECRET: str = os.getenv("LARK_APP_SECRET", "45Jsgm3TYfEwD2F67BH1LctlYEcCjZpH")
+    BASE_URL: str = "https://open.larksuite.com/open-apis"
+    APPROVAL_UPLOAD_URL: str = "https://www.larksuite.com/approval/openapi/v2/file/upload"
+    
+    # VietQR settings
+    VIETQR_TEMPLATE: str = "compact2"
+    VIETQR_BASE_URL: str = "https://img.vietqr.io/image"
+    
+    # Cache settings
+    QR_CACHE_DURATION_MINUTES: int = 5
+    TOKEN_CACHE_BUFFER_SECONDS: int = 300  # 5 minutes buffer
+    
+    # File settings
+    EVENTS_FILE: str = "lark_events.csv"
+    
+    # Default user for comments
+    DEFAULT_USER_ID: str = "cd11b141"
+    
+    # Validation settings (for future extensions)
+    ENABLE_AMOUNT_VALIDATION: bool = os.getenv("ENABLE_AMOUNT_VALIDATION", "false").lower() == "true"
+    ENABLE_WORKFLOW_ALERTS: bool = os.getenv("ENABLE_WORKFLOW_ALERTS", "false").lower() == "true"
+
+# Global settings instance
+settings = Settings()
+
+============================================================
+
+============================================================
+FILE: app\models\approval.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+
+class FormField(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    value: Optional[Any] = None
+
+class TaskInfo(BaseModel):
+    node_id: Optional[str] = None
+    status: Optional[str] = None
+    task_id: Optional[str] = None
+    node_name: Optional[str] = None
+
+class ApprovalInstance(BaseModel):
+    instance_code: str
+    status: Optional[str] = None
+    form: Optional[str] = None
+    task_list: Optional[List[TaskInfo]] = None
+
+class AmountDetectionResult(BaseModel):
+    advance_amount: Optional[float] = None
+    payment_amount: Optional[float] = None
+    advance_field_found: bool = False
+    payment_field_found: bool = False
+    all_amount_fields: Dict[str, Any] = {}
+    fields_used: Dict[str, Optional[str]] = {}
+
+class QRTypeResult(BaseModel):
+    qr_type: str  # 'advance', 'payment', 'none'
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    reason: str
+
+class NodeProcessingResult(BaseModel):
+    success: bool
+    qr_type: str = 'none'
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    node_strategy: Optional[str] = None
+    reason: Optional[str] = None
+    error: Optional[str] = None
+    field_detection: Optional[AmountDetectionResult] = None
+
+class ValidationResult(BaseModel):
+    """Model for validation results - extensible for future validations"""
+    is_valid: bool
+    validation_type: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+============================================================
+
+============================================================
+FILE: app\models\event.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from datetime import datetime
+
+class EventHeader(BaseModel):
+    event_id: Optional[str] = None
+    event_type: Optional[str] = None
+    create_time: Optional[str] = None
+    token: Optional[str] = None
+    tenant_key: Optional[str] = None
+    app_id: Optional[str] = None
+
+class EventBody(BaseModel):
+    instance_code: Optional[str] = None
+    type: Optional[str] = None
+    object: Optional[Dict[str, Any]] = None
+
+class LarkEvent(BaseModel):
+    schema: Optional[str] = None
+    header: Optional[EventHeader] = None
+    event: Optional[EventBody] = None
+    type: Optional[str] = None  # For URL verification
+    challenge: Optional[str] = None  # For URL verification
+
+class EventRecord(BaseModel):
+    timestamp: datetime
+    event_type: str
+    instance_code: Optional[str]
+    raw_event: str
+
+============================================================
+
+============================================================
+FILE: app\models\response.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+
+class APIResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+class UploadResult(BaseModel):
+    success: bool
+    file_code: Optional[str] = None
+    file_url: Optional[str] = None
+    error: Optional[str] = None
+
+class CommentResult(BaseModel):
+    success: bool
+    comment_id: Optional[str] = None
+    error: Optional[str] = None
+
+class QRGenerationResult(BaseModel):
+    success: bool
+    qr_type: Optional[str] = None
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    node_name: Optional[str] = None
+    comment_id: Optional[str] = None
+    error: Optional[str] = None
+    processing_info: Optional[Dict[str, Any]] = None
+
+class CacheStatus(BaseModel):
+    total_cached_qr: int
+    active_cache: Dict[str, Dict[str, Any]]
+    cache_duration_minutes: int
+    current_time: str
+
+============================================================
+
+============================================================
+FILE: app\routers\config.py
+============================================================
+from fastapi import APIRouter
+from app.config.node_config import NODE_CONFIG, get_node_config, get_configured_node_ids
+from app.services.cache_service import cache_service
+
+router = APIRouter()
+
+@router.get("/node-ids")
+async def get_allowed_node_ids():
+    """Xem danh sách allowed node IDs hiện tại"""
+    return {
+        "allowed_node_ids": get_configured_node_ids(),
+        "total_allowed": len(NODE_CONFIG)
+    }
+
+@router.get("/nodes")
+async def get_node_configuration():
+    """Xem chi tiết NODE_CONFIG"""
+    return {
+        "node_config": NODE_CONFIG,
+        "total_nodes": len(NODE_CONFIG),
+        "configured_node_ids": list(NODE_CONFIG.keys()),
+        "strategies": {
+            node_id: config["strategy"] 
+            for node_id, config in NODE_CONFIG.items()
+        }
+    }
+
+@router.get("/nodes/{node_id}")
+async def get_specific_node_config(node_id: str):
+    """Xem config của một node cụ thể"""
+    config = get_node_config(node_id)
+    if config:
+        return {
+            "node_id": node_id,
+            "config": config,
+            "short_id": node_id[:8] + "..."
+        }
+    else:
+        return {
+            "error": f"Node ID {node_id} not found in configuration",
+            "available_nodes": list(NODE_CONFIG.keys())
+        }
+
+@router.get("/cache/qr-status")
+async def get_qr_cache_status():
+    """Xem trạng thái cache QR generation"""
+    return cache_service.get_cache_status()
+
+@router.post("/cache/clear")
+async def clear_qr_cache():
+    """Clear cache QR generation manually"""
+    return cache_service.clear_cache()
+
+============================================================
+
+============================================================
+FILE: app\routers\debug.py
+============================================================
+from fastapi import APIRouter
+import json
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.amount_detector import AmountDetector
+from app.config.node_config import NODE_CONFIG
+
+router = APIRouter()
+amount_detector = AmountDetector()
+
+@router.get("/instance/{instance_code}")
+async def debug_instance(instance_code: str):
+    """Debug instance với NODE_CONFIG"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"error": "Cannot get access token"}
+        
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        if not api_response:
+            return {"error": "Cannot get instance data"}
+        
+        # Sử dụng function với NODE_CONFIG
+        check_result = qr_processor.check_pending_allowed_node_in_task_list(api_response)
+        
+        return {
+            "instance_code": instance_code,
+            "node_check_result": check_result,
+            "node_config": NODE_CONFIG,
+            "will_generate_qr": check_result['found'],
+            "reason": f"Found {check_result.get('strategy', 'unknown')} node with required status" if check_result['found'] else "No matching configured nodes found"
+        }
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/instance/{instance_code}/fields")
+async def debug_instance_fields(instance_code: str):
+    """Debug chi tiết về fields trong form của instance"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"error": "Cannot get access token"}
+        
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        if not api_response:
+            return {"error": "Cannot get instance data"}
+            
+        if 'data' not in api_response or 'form' not in api_response['data']:
+            return {"error": "No form data found"}
+            
+        form_str = api_response['data']['form']
+        form_data = json.loads(form_str)
+        
+        # Enhanced field detection
+        field_detection = amount_detector.detect_available_amount_fields(form_data)
+        
+        # Test với tất cả configured nodes
+        node_results = {}
+        for node_id, config in NODE_CONFIG.items():
+            node_result = amount_detector.get_amount_and_type_for_node(node_id, form_data)
+            node_results[config['name']] = {
+                'node_id': node_id[:8] + '...',
+                'strategy': config['strategy'],
+                'result': node_result
+            }
+        
+        # Extract tất cả field names để debug
+        all_fields = []
+        for field in form_data:
+            field_info = {
+                'name': field.get('name'),
+                'type': field.get('type'),
+                'value': field.get('value')
+            }
+            all_fields.append(field_info)
+        
+        return {
+            "instance_code": instance_code,
+            "field_detection": field_detection,
+            "node_processing_results": node_results,
+            "all_form_fields": all_fields,
+            "total_fields": len(all_fields)
+        }
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+============================================================
+
+============================================================
+FILE: app\routers\manual.py
+============================================================
+from fastapi import APIRouter
+import json
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.amount_detector import AmountDetector
+import os
+import pandas as pd
+from app.config.settings import settings
+
+router = APIRouter()
+amount_detector = AmountDetector()
+
+@router.post("/process/{instance_code}")
+async def manual_process_instance(instance_code: str):
+    """Enhanced manual processing với detailed results"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"success": False, "error": "Cannot get access token"}
+        
+        # Get detailed processing info trước khi process
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        
+        processing_info = {"instance_code": instance_code}
+        
+        if api_response:
+            # Get node check info
+            node_check = qr_processor.check_pending_allowed_node_in_task_list(api_response)
+            processing_info["node_check"] = node_check
+            
+            # Get field detection info if node found
+            if node_check['found'] and 'data' in api_response and 'form' in api_response['data']:
+                form_str = api_response['data']['form']
+                form_data = json.loads(form_str)
+                
+                node_id = node_check['node_id']
+                amount_result = amount_detector.get_amount_and_type_for_node(node_id, form_data)
+                processing_info["amount_detection"] = amount_result
+        
+        # Process the instance
+        result = await qr_processor.process_approval_with_qr_comment(instance_code, access_token)
+        
+        return {
+            "success": result,
+            "message": f"{'Successfully processed' if result else 'Failed to process'} instance {instance_code}",
+            "processing_info": processing_info
+        }
+            
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@router.get("/events")
+async def get_events():
+    """Xem events đã nhận"""
+    try:
+        if os.path.exists(settings.EVENTS_FILE):
+            df = pd.read_csv(settings.EVENTS_FILE, encoding='utf-8')
+            return {
+                "total_events": len(df),
+                "latest_events": df.tail(20).to_dict('records')
+            }
+        return {"message": "No events found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+============================================================
+
+============================================================
+FILE: app\routers\webhook.py
+============================================================
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.helpers import save_event_to_csv, get_event_type, extract_instance_code
+from app.config.settings import settings
+
+router = APIRouter()
+
+@router.post("/webhook")
+async def handle_lark_webhook(request: Request):
+    try:
+        data = await request.json()
+        print(f"📨 Received webhook: {get_event_type(data)}")
+        
+        # Handle URL verification
+        if data.get("type") == "url_verification":
+            return JSONResponse(content={"challenge": data.get("challenge")})
+        
+        # Lưu event vào CSV
+        await save_event_to_csv(data, settings.EVENTS_FILE)
+        
+        # Xử lý approval event
+        event_type = get_event_type(data)
+        if "approval" in event_type.lower():
+            instance_code = extract_instance_code(data)
+            if instance_code:
+                print(f"🔍 Processing approval instance: {instance_code}")
+                
+                # Lấy access token
+                access_token = await lark_service.get_access_token()
+                if access_token:
+                    # Xử lý tự động: check node_id -> lấy thông tin -> tạo QR -> upload -> comment
+                    await qr_processor.process_approval_with_qr_comment(instance_code, access_token)
+                else:
+                    print("❌ Không thể lấy access token")
+        
+        return JSONResponse(content={"status": "success"})
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+============================================================
+
+============================================================
+FILE: app\services\cache_service.py
+============================================================
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
+class CacheService:
+    def __init__(self):
+        self.qr_generation_cache: Dict[str, datetime] = {}
+    
+    def generate_cache_key(self, instance_code: str, node_id: str, qr_type: str) -> str:
+        """
+        Tạo cache key để detect duplicate
+        
+        Args:
+            instance_code (str): Instance code
+            node_id (str): Node ID (8 ký tự đầu)
+            qr_type (str): 'advance' hoặc 'payment'
+            
+        Returns:
+            str: Unique cache key
+        """
+        short_node_id = node_id[:8] if len(node_id) > 8 else node_id
+        return f"{instance_code}_{short_node_id}_{qr_type}"
+
+    def is_qr_recently_generated(self, instance_code: str, node_id: str, qr_type: str, 
+                               cache_duration_minutes: int = 5) -> bool:
+        """
+        Check xem QR đã được tạo trong thời gian gần đây chưa
+        
+        Returns:
+            bool: True nếu đã tạo gần đây, False nếu chưa hoặc đã hết hạn
+        """
+        try:
+            cache_key = self.generate_cache_key(instance_code, node_id, qr_type)
+            
+            if cache_key not in self.qr_generation_cache:
+                print(f"🆕 Cache miss: {cache_key} - chưa tạo QR")
+                return False
+            
+            generated_time = self.qr_generation_cache[cache_key]
+            current_time = datetime.now()
+            time_diff = current_time - generated_time
+            
+            if time_diff > timedelta(minutes=cache_duration_minutes):
+                del self.qr_generation_cache[cache_key] 
+                print(f"⏰ Cache expired: {cache_key} ({time_diff.total_seconds()/60:.1f} minutes ago)")
+                return False
+            
+            print(f"🔒 Cache hit: {cache_key} - QR đã tạo {time_diff.total_seconds()/60:.1f} phút trước")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error checking cache: {e}")
+            return False
+
+    def mark_qr_as_generated(self, instance_code: str, node_id: str, qr_type: str):
+        """Đánh dấu QR đã được tạo"""
+        try:
+            cache_key = self.generate_cache_key(instance_code, node_id, qr_type)
+            self.qr_generation_cache[cache_key] = datetime.now()
+            
+            print(f"🔒 Marked QR as generated: {cache_key}")
+            print(f"📊 Cache size: {len(self.qr_generation_cache)} entries")
+            
+        except Exception as e:
+            print(f"❌ Error marking cache: {e}")
+
+    def get_cache_status(self) -> Dict:
+        """Lấy trạng thái cache"""
+        try:
+            current_time = datetime.now()
+            active_cache = {}
+            
+            for cache_key, generated_time in self.qr_generation_cache.items():
+                time_diff = current_time - generated_time
+                minutes_ago = time_diff.total_seconds() / 60
+                
+                active_cache[cache_key] = {
+                    'generated_at': generated_time.isoformat(),
+                    'minutes_ago': round(minutes_ago, 1),
+                    'will_expire_in_minutes': max(0, 5 - minutes_ago)
+                }
+            
+            return {
+                'total_cached_qr': len(self.qr_generation_cache),
+                'active_cache': active_cache,
+                'cache_duration_minutes': 5,
+                'current_time': current_time.isoformat()
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+
+    def clear_cache(self) -> Dict:
+        """Clear tất cả cache"""
+        try:
+            old_count = len(self.qr_generation_cache)
+            old_keys = list(self.qr_generation_cache.keys())
+            
+            self.qr_generation_cache.clear()
+            
+            return {
+                'message': f'Successfully cleared {old_count} cache entries',
+                'cleared_keys': old_keys,
+                'current_cache_size': len(self.qr_generation_cache)
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+# Global cache instance
+cache_service = CacheService()
+
+============================================================
+
+============================================================
+FILE: app\services\lark_service.py
+============================================================
+import requests
+import json
+from datetime import datetime
+from typing import Optional, Dict, Any
+from app.config.settings import settings
+
+class LarkService:
+    def __init__(self):
+        self.access_token_cache = {"token": None, "expires_at": None}
+    
+    async def get_access_token(self) -> Optional[str]:
+        """Lấy access token từ LarkSuite với caching"""
+        current_time = datetime.now().timestamp()
+        
+        if (self.access_token_cache["token"] and 
+            self.access_token_cache["expires_at"] and 
+            current_time < self.access_token_cache["expires_at"]):
+            return self.access_token_cache["token"]
+        
+        try:
+            url = f"{settings.BASE_URL}/auth/v3/tenant_access_token/internal"
+            payload = {
+                "app_id": settings.LARK_APP_ID,
+                "app_secret": settings.LARK_APP_SECRET
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            data = response.json()
+            
+            if data.get("code") == 0:
+                token = data["tenant_access_token"]
+                expires_in = data.get("expire", 7200)
+                
+                self.access_token_cache["token"] = token
+                self.access_token_cache["expires_at"] = current_time + expires_in - settings.TOKEN_CACHE_BUFFER_SECONDS
+                
+                print(f"✅ Got access token")
+                return token
+            else:
+                print(f"❌ Failed to get token: {data}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error getting token: {e}")
+            return None
+
+    async def get_approval_instance(self, instance_code: str, access_token: str) -> Optional[Dict]:
+        """Lấy thông tin approval instance"""
+        try:
+            url = f"{settings.BASE_URL}/approval/v4/instances/{instance_code}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            print(f"🔍 Lấy thông tin instance: {instance_code}")
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"❌ Lỗi API call: {response.status_code}")
+                return None
+                
+            api_response = response.json()
+            
+            if api_response.get("code") != 0:
+                print(f"❌ API response error: {api_response}")
+                return None
+                
+            return api_response
+            
+        except Exception as e:
+            print(f"❌ Error getting approval instance: {e}")
+            return None
+
+    async def upload_image_to_approval(self, image_buffer, filename: str, access_token: str) -> Dict:
+        """Upload ảnh lên Lark Approval API"""
+        try:
+            image_buffer.seek(0)
+            
+            files = {
+                'name': (None, filename),
+                'type': (None, 'image'),
+                'content': (filename, image_buffer, 'image/png')
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {access_token}'
+            }
+            
+            print(f"📤 Đang upload ảnh: {filename}")
+            response = requests.post(settings.APPROVAL_UPLOAD_URL, files=files, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('code') == 0:
+                    file_code = data['data']['code']
+                    file_url = data['data']['url']
+                    print(f'✅ Upload ảnh thành công! File code: {file_code}')
+                    return {
+                        'success': True,
+                        'file_code': file_code,
+                        'file_url': file_url
+                    }
+                else:
+                    error_msg = f"API error: {data.get('msg')} (code: {data.get('code')})"
+                    print(f'❌ Upload thất bại: {error_msg}')
+                    return {'success': False, 'error': error_msg}
+            else:
+                error_msg = f"HTTP error: {response.status_code}"
+                print(f'❌ Upload thất bại: {error_msg}')
+                return {'success': False, 'error': error_msg}
+                
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            print(f"❌ Lỗi upload: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+    async def create_enhanced_comment_with_image(self, instance_code: str, file_url: str, file_code: str, 
+                                               filename: str, qr_type: str, amount: int, node_name: str,
+                                               access_token: str, user_id: str = None) -> Dict:
+        """Tạo comment với ảnh và thông tin chi tiết"""
+        try:
+            if user_id is None:
+                user_id = settings.DEFAULT_USER_ID
+                
+            create_comment_url = f'{settings.BASE_URL}/approval/v4/instances/{instance_code}/comments'
+            
+            params = {
+                "user_id": user_id,
+                "user_id_type": "user_id"
+            }
+            
+            # Enhanced comment text với type info
+            qr_type_display = {
+                'advance': 'TẠM ỨNG',
+                'payment': 'THANH TOÁN'
+            }
+            
+            comment_text = f"""🏦 Mã VietQR {qr_type_display.get(qr_type, qr_type.upper())}
+            💰 Số tiền: {amount:,} VND
+            📋 Node: {node_name}
+            📄 Instance: {instance_code}"""
+
+            # Estimate file size
+            try:
+                file_size = len(filename) * 100  # Rough estimate
+            except:
+                file_size = 50000  # Default estimate
+            
+            content_data = {
+                "text": comment_text,
+                "files": [{
+                    "url": file_url,
+                    "fileSize": file_size,
+                    "title": filename,
+                    "type": "image",
+                    "extra": file_code
+                }]
+            }
+            
+            request_body = {
+                "content": json.dumps(content_data, ensure_ascii=False)
+            }
+            
+            headers_comment = {
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            print(f"📤 Đang tạo enhanced comment cho instance: {instance_code}")
+            print(f"   Comment: {comment_text.replace(chr(10), ' | ')}")
+            
+            response = requests.post(
+                create_comment_url, 
+                params=params,
+                json=request_body, 
+                headers=headers_comment
+            )
+            
+            if response.status_code == 200:
+                comment_result = response.json()
+                if comment_result.get('code') == 0:
+                    comment_id = comment_result.get("data", {}).get("comment_id", "N/A")
+                    print(f'✅ Tạo enhanced comment thành công! Comment ID: {comment_id}')
+                    return {'success': True, 'comment_id': comment_id}
+                else:
+                    error_msg = f"API error: {comment_result.get('msg')} (code: {comment_result.get('code')})"
+                    print(f'❌ Tạo comment thất bại: {error_msg}')
+                    return {'success': False, 'error': error_msg}
+            else:
+                error_msg = f"HTTP error: {response.status_code}"
+                print(f'❌ Tạo comment thất bại: {error_msg}')
+                return {'success': False, 'error': error_msg}
+                
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            print(f"❌ Lỗi tạo enhanced comment: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+# Global service instance
+lark_service = LarkService()
+
+============================================================
+
+============================================================
+FILE: app\services\qr_processor.py
+============================================================
+"""
+QR Processing Service - Main business logic for QR generation and processing
+"""
+import json
+from typing import Dict, Optional, List
+from app.config.settings import settings
+from app.config.node_config import NODE_CONFIG, get_node_config
+from app.services.lark_service import lark_service
+from app.services.vietqr_service import vietqr_service
+from app.services.cache_service import cache_service
+from app.services.validation_service import validation_service
+from app.utils.field_extractor import FieldExtractor
+from app.utils.amount_detector import AmountDetector
+from app.models.approval import NodeProcessingResult
+
+class QRProcessor:
+    def __init__(self):
+        self.field_extractor = FieldExtractor()
+        self.amount_detector = AmountDetector()
+    
+    def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
+        """
+        Kiểm tra node có status phù hợp + additional conditions
+        """
+        if node_config is None:
+            node_config = NODE_CONFIG
+            
+        try:
+            data = api_response.get('data', {})
+            task_list = data.get('task_list', [])
+            configured_node_ids = list(node_config.keys())
+            
+            # Tạo dict để lookup status của tất cả nodes
+            node_status_map = {}
+            for task in task_list:
+                node_id = task.get('node_id')
+                status = task.get('status', 'UNKNOWN')
+                if node_id:
+                    node_status_map[node_id] = status
+            
+            print(f"🔍 Checking nodes with additional conditions:")
+            for node_id, config in node_config.items():
+                required_status = config.get('required_status', 'PENDING')
+                additional_conditions = config.get('additional_conditions', [])
+                print(f"   • {node_id[:8]}... - {config['name']} (requires: {required_status})")
+                if additional_conditions:
+                    for condition in additional_conditions:
+                        print(f"     + Additional: {condition['node_id'][:8]}... must be {condition['required_status']}")
+            
+            print(f"📋 Task list contains {len(task_list)} tasks")
+            
+            matching_configured_nodes = []
+            
+            for node_id in configured_node_ids:
+                config = node_config[node_id]
+                required_status = config.get('required_status', 'PENDING')
+                current_status = node_status_map.get(node_id, 'NOT_FOUND')
+                
+                # Check primary condition
+                if current_status != required_status:
+                    continue
+                    
+                # Check additional conditions
+                additional_conditions = config.get('additional_conditions', [])
+                all_conditions_met = True
+                
+                for condition in additional_conditions:
+                    condition_node_id = condition['node_id']
+                    condition_required_status = condition['required_status']
+                    condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
+                    
+                    print(f"🔍 Checking additional condition: {condition_node_id[:8]}... ")
+                    print(f"   Required: {condition_required_status}, Current: {condition_current_status}")
+                    
+                    if condition_current_status != condition_required_status:
+                        all_conditions_met = False
+                        print(f"❌ Additional condition not met for {node_id[:8]}...")
+                        break
+                    else:
+                        print(f"✅ Additional condition met")
+                
+                if all_conditions_met:
+                    matching_configured_nodes.append({
+                        'node_id': node_id,
+                        'config': config,
+                        'strategy': config['strategy'],
+                        'matched_status': current_status,
+                        'required_status': required_status,
+                        'additional_conditions_met': True
+                    })
+                    print(f"✅ Full match found: {node_id[:8]}... ({config['name']}) - Status: {current_status}")
+            
+            # Return first matching configured node
+            if matching_configured_nodes:
+                first_matching = matching_configured_nodes[0]
+                return {
+                    'found': True,
+                    'node_id': first_matching['node_id'],
+                    'node_config': first_matching['config'],
+                    'strategy': first_matching['strategy'],
+                    'matched_status': first_matching['matched_status'],
+                    'required_status': first_matching['required_status'],
+                    'all_tasks': task_list,
+                    'all_matching_configured': matching_configured_nodes,
+                    'node_status_map': node_status_map
+                }
+            else:
+                print(f"❌ No nodes matching all conditions found")
+                return {
+                    'found': False,
+                    'node_id': None,
+                    'node_config': None,
+                    'strategy': None,
+                    'matched_status': None,
+                    'all_tasks': task_list,
+                    'all_matching_configured': [],
+                    'node_status_map': node_status_map
+                }
+            
+        except Exception as e:
+            print(f"❌ Error checking nodes: {e}")
+            return {
+                'found': False,
+                'error': str(e),
+                'all_tasks': [],
+                'all_matching_configured': []
+            }
+    
+    def validate_amount_value(self, amount_value) -> dict:
+        """Validate và convert amount value"""
+        try:
+            if amount_value is None:
+                return {'valid': False, 'amount': None, 'error': 'Amount is None'}
+                
+            # Convert to float first, then int
+            amount_float = float(amount_value)
+            amount_int = int(amount_float)
+            
+            if amount_int <= 0:
+                return {'valid': False, 'amount': amount_int, 'error': 'Amount must be positive'}
+                
+            return {'valid': True, 'amount': amount_int, 'error': None}
+            
+        except (ValueError, TypeError) as e:
+            return {'valid': False, 'amount': None, 'error': f'Invalid amount format: {str(e)}'}
+    
+    async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
+        """
+        Enhanced version với duplicate detection và validation
+        Xử lý approval với smart field detection, multiple node support và flexible status requirements
+        """
+        try:
+            # Lấy instance details
+            api_response = await lark_service.get_approval_instance(instance_code, access_token)
+            if not api_response:
+                return False
+            
+            # Check nodes với required status
+            node_check_result = self.check_pending_allowed_node_in_task_list(api_response)
+            
+            if not node_check_result['found']:
+                print(f"⏭️ Skipping QR generation - no matching configured nodes found")
+                return True  # Return True vì không phải lỗi, chỉ là skip
+            
+            matching_node_id = node_check_result['node_id']
+            node_config = node_check_result['node_config']
+            node_strategy = node_check_result['strategy']
+            matched_status = node_check_result.get('matched_status', 'UNKNOWN')
+            required_status = node_check_result.get('required_status', 'PENDING')
+            
+            print(f"✅ Processing node: {node_config['name']} (strategy: {node_strategy})")
+            print(f"   Status: {matched_status} (required: {required_status})")
+            
+            # Extract form data
+            if 'data' not in api_response or 'form' not in api_response['data']:
+                print("❌ Không tìm thấy form data")
+                return False
+                
+            form_str = api_response['data']['form']
+            form_data = json.loads(form_str)
+            
+            # NEW: Run validations if enabled
+            if settings.ENABLE_AMOUNT_VALIDATION or settings.ENABLE_WORKFLOW_ALERTS:
+                task_list = api_response.get('data', {}).get('task_list', [])
+                validation_results = validation_service.run_all_validations(
+                    form_data, task_list, matching_node_id
+                )
+                
+                # Log validation results
+                for result in validation_results:
+                    print(f"🔍 Validation: {result.message}")
+                    if not result.is_valid and settings.ENABLE_WORKFLOW_ALERTS:
+                        # TODO: Implement alert system (email, Slack, etc.)
+                        print(f"🚨 ALERT: {result.message}")
+            
+            # Smart field detection theo node strategy
+            amount_result = self.amount_detector.get_amount_and_type_for_node(matching_node_id, form_data)
+            
+            if not amount_result['success']:
+                print(f"❌ Cannot determine amount/type: {amount_result.get('reason', 'Unknown error')}")
+                if 'error' in amount_result:
+                    print(f"    Error details: {amount_result['error']}")
+                return False
+            
+            qr_type = amount_result['qr_type']
+            amount_value = amount_result['amount']
+            field_used = amount_result['field_used']
+            
+            # Check duplicate TRƯỚC KHI tạo QR
+            if cache_service.is_qr_recently_generated(
+                instance_code, matching_node_id, qr_type, 
+                settings.QR_CACHE_DURATION_MINUTES
+            ):
+                print(f"⚠️ DUPLICATE DETECTED: QR {qr_type.upper()} for node {node_config['name']} already generated recently")
+                print(f"   → SKIPPING QR generation to prevent duplicate")
+                return True  # Return success vì không phải lỗi, chỉ là skip duplicate
+            
+            print(f"💰 QR Generation Details:")
+            print(f"   - Type: {qr_type}")
+            print(f"   - Amount: {amount_value:,} VND")
+            print(f"   - Field used: {field_used}")
+            print(f"   - Node strategy: {node_strategy}")
+            print(f"   - Trigger status: {matched_status}")
+            
+            # Validate amount
+            amount_validation = self.validate_amount_value(amount_value)
+            if not amount_validation['valid']:
+                print(f"❌ Invalid amount: {amount_validation['error']}")
+                return False
+                
+            amount_int = amount_validation['amount']
+            
+            # Extract thông tin ngân hàng
+            bank_id = self.field_extractor.extract_field_value(form_data, 'Ngân hàng')
+            account_no = self.field_extractor.extract_field_value(form_data, 'Số tài khoản ngân hàng')
+            account_name = self.field_extractor.extract_field_value(form_data, 'Tên người thụ hưởng')
+            
+            # Kiểm tra thông tin ngân hàng
+            if not all([bank_id, account_no, account_name]):
+                missing_fields = []
+                if not bank_id: missing_fields.append('Ngân hàng')
+                if not account_no: missing_fields.append('Số tài khoản ngân hàng')
+                if not account_name: missing_fields.append('Tên người thụ hưởng')
+                
+                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing_fields)}")
+                return False
+            
+            # Generate QR description theo type
+            description = vietqr_service.generate_qr_description(qr_type, instance_code)
+            
+            print(f"🏦 Tạo VietQR với thông tin:")
+            print(f"   - Ngân hàng: {bank_id}")
+            print(f"   - Số TK: {account_no}")
+            print(f"   - Tên: {account_name}")
+            print(f"   - Số tiền: {amount_int:,} VND")
+            print(f"   - Mô tả: {description}")
+            
+            # Tạo VietQR code trong bộ nhớ
+            qr_image_buffer = vietqr_service.create_qr_in_memory(
+                bank_id=bank_id,
+                account_no=account_no,
+                amount=amount_int,
+                description=description,
+                account_name=account_name
+            )
+            
+            if not qr_image_buffer:
+                print("❌ Không thể tạo VietQR code")
+                return False
+            
+            # Upload ảnh lên Lark Approval
+            filename = f"{instance_code}_{qr_type}_qr.png"
+            upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
+            
+            if not upload_result['success']:
+                print(f"❌ Upload thất bại: {upload_result['error']}")
+                return False
+            
+            # Đánh dấu đã tạo QR SAU KHI upload thành công
+            cache_service.mark_qr_as_generated(instance_code, matching_node_id, qr_type)
+            
+            # Enhanced comment với type và status info
+            comment_result = await lark_service.create_enhanced_comment_with_image(
+                instance_code=instance_code,
+                file_url=upload_result['file_url'],
+                file_code=upload_result['file_code'],
+                filename=filename,
+                qr_type=qr_type,
+                amount=amount_int,
+                node_name=node_config['name'],
+                access_token=access_token
+            )
+            
+            if comment_result['success']:
+                print(f"✅ Hoàn thành xử lý approval {instance_code}")
+                print(f"💰 Loại: {qr_type.upper()} | Số tiền: {amount_int:,} VND")
+                print(f"🏷️ Node: {node_config['name']} | Status: {matched_status}")
+                print(f"📋 Field: {field_used} | Strategy: {node_strategy}")
+                print(f"💬 Comment ID: {comment_result['comment_id']}")
+                return True
+            else:
+                print(f"❌ Tạo comment thất bại: {comment_result['error']}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Lỗi xử lý approval: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+# Global processor instance
+qr_processor = QRProcessor()
+
+============================================================
+
+============================================================
+FILE: app\services\validation_service.py
+============================================================
+"""
+Validation Service - Dành cho các validation rules mở rộng trong tương lai
+Ví dụ: kiểm tra tổng tạm ứng + thanh toán = thành tiền
+"""
+from typing import Dict, List, Any, Optional
+from app.models.approval import ValidationResult
+
+class ValidationService:
+    def __init__(self):
+        self.validation_rules = {
+            "amount_sum_validation": self.validate_amount_sum,
+            "workflow_status_validation": self.validate_workflow_status,
+            "field_consistency_validation": self.validate_field_consistency
+        }
+    
+    def validate_amount_sum(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+        """
+        Kiểm tra tổng tạm ứng + thanh toán có bằng thành tiền không
+        
+        Args:
+            form_data: Form data từ approval
+            **kwargs: Additional parameters
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        try:
+            from app.utils.field_extractor import FieldExtractor
+            extractor = FieldExtractor()
+            
+            # Extract các fields cần thiết
+            advance_amount = extractor.extract_field_value(form_data, "Số tiền tạm ứng")
+            payment_amount = extractor.extract_field_value(form_data, "Số tiền thanh toán")
+            total_amount = extractor.extract_field_value(form_data, "Thành tiền")
+            
+            # Convert sang float
+            advance = float(advance_amount) if advance_amount else 0
+            payment = float(payment_amount) if payment_amount else 0
+            total = float(total_amount) if total_amount else 0
+            
+            calculated_sum = advance + payment
+            
+            if abs(calculated_sum - total) < 0.01:  # Allow small floating point differences
+                return ValidationResult(
+                    is_valid=True,
+                    validation_type="amount_sum_validation",
+                    message=f"✅ Tổng số tiền hợp lệ: {advance:,} + {payment:,} = {total:,}",
+                    details={
+                        "advance_amount": advance,
+                        "payment_amount": payment,
+                        "total_amount": total,
+                        "calculated_sum": calculated_sum
+                    }
+                )
+            else:
+                return ValidationResult(
+                    is_valid=False,
+                    validation_type="amount_sum_validation",
+                    message=f"❌ Tổng số tiền không khớp: {advance:,} + {payment:,} = {calculated_sum:,} ≠ {total:,}",
+                    details={
+                        "advance_amount": advance,
+                        "payment_amount": payment,
+                        "total_amount": total,
+                        "calculated_sum": calculated_sum,
+                        "difference": abs(calculated_sum - total)
+                    }
+                )
+                
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="amount_sum_validation",
+                message=f"❌ Lỗi validation: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
+        """
+        Kiểm tra workflow status - cảnh báo nếu node đã duyệt mà bị thu hồi
+        
+        Args:
+            task_list: Task list từ approval
+            node_id: Node ID cần kiểm tra
+            **kwargs: Additional parameters
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        try:
+            # Tìm node trong task list
+            target_node = None
+            for task in task_list:
+                if task.get('node_id') == node_id:
+                    target_node = task
+                    break
+            
+            if not target_node:
+                return ValidationResult(
+                    is_valid=True,  # Không tìm thấy node không phải lỗi
+                    validation_type="workflow_status_validation",
+                    message=f"Node {node_id[:8]}... không tìm thấy trong task list",
+                    details={"node_id": node_id, "found": False}
+                )
+            
+            current_status = target_node.get('status', 'UNKNOWN')
+            
+            # Logic kiểm tra thu hồi
+            if current_status in ['REJECTED', 'CANCELED', 'WITHDRAWN']:
+                # Kiểm tra xem trước đó có được approve không
+                # (Logic này có thể phức tạp hơn tùy theo business rule)
+                return ValidationResult(
+                    is_valid=False,
+                    validation_type="workflow_status_validation",
+                    message=f"⚠️ CẢNH BÁO: Node {node_id[:8]}... có status {current_status} - có thể đã bị thu hồi",
+                    details={
+                        "node_id": node_id,
+                        "current_status": current_status,
+                        "alert_type": "potential_withdrawal"
+                    }
+                )
+            
+            return ValidationResult(
+                is_valid=True,
+                validation_type="workflow_status_validation",
+                message=f"✅ Node {node_id[:8]}... có status bình thường: {current_status}",
+                details={
+                    "node_id": node_id,
+                    "current_status": current_status
+                }
+            )
+            
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="workflow_status_validation",
+                message=f"❌ Lỗi kiểm tra workflow status: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def validate_field_consistency(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+        """
+        Kiểm tra tính nhất quán của các fields
+        Ví dụ: Ngày bắt đầu phải trước ngày kết thúc
+        """
+        try:
+            # Placeholder cho logic validation khác
+            return ValidationResult(
+                is_valid=True,
+                validation_type="field_consistency_validation",
+                message="✅ Field consistency check passed",
+                details={"checked": True}
+            )
+            
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="field_consistency_validation",
+                message=f"❌ Lỗi kiểm tra field consistency: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def run_validation(self, validation_type: str, **kwargs) -> ValidationResult:
+        """
+        Chạy một validation rule cụ thể
+        
+        Args:
+            validation_type: Loại validation cần chạy
+            **kwargs: Parameters cho validation
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        if validation_type in self.validation_rules:
+            return self.validation_rules[validation_type](**kwargs)
+        else:
+            return ValidationResult(
+                is_valid=False,
+                validation_type=validation_type,
+                message=f"❌ Unknown validation type: {validation_type}",
+                details={"available_types": list(self.validation_rules.keys())}
+            )
+    
+    def run_all_validations(self, form_data: List[Dict], task_list: List[Dict], 
+                           node_id: str) -> List[ValidationResult]:
+        """
+        Chạy tất cả validations
+        
+        Args:
+            form_data: Form data từ approval
+            task_list: Task list từ approval
+            node_id: Node ID đang xử lý
+            
+        Returns:
+            List[ValidationResult]: Danh sách kết quả validation
+        """
+        results = []
+        
+        # Amount sum validation
+        results.append(self.run_validation(
+            "amount_sum_validation", 
+            form_data=form_data
+        ))
+        
+        # Workflow status validation
+        results.append(self.run_validation(
+            "workflow_status_validation", 
+            task_list=task_list, 
+            node_id=node_id
+        ))
+        
+        # Field consistency validation
+        results.append(self.run_validation(
+            "field_consistency_validation", 
+            form_data=form_data
+        ))
+        
+        return results
+
+# Global service instance
+validation_service = ValidationService()
+
+============================================================
+
+============================================================
+FILE: app\services\vietqr_service.py
+============================================================
+import requests
+from urllib.parse import quote
+from PIL import Image
+from io import BytesIO
+from app.config.settings import settings
+
+class VietQRService:
+    def __init__(self):
+        self.base_url = settings.VIETQR_BASE_URL
+    
+    def create_qr_in_memory(self, bank_id: str, account_no: str, amount: int, 
+                           description: str, account_name: str, 
+                           template: str = None) -> BytesIO:
+        """
+        Tạo QR code với số tiền và nội dung, trả về BytesIO object
+        
+        Args:
+            bank_id (str): Mã ngân hàng
+            account_no (str): Số tài khoản   
+            amount (int): Số tiền (VND)
+            description (str): Nội dung chuyển khoản
+            account_name (str): Tên tài khoản
+            template (str): Template (mặc định từ settings)
+        
+        Returns:
+            BytesIO: QR code image data hoặc None nếu lỗi
+        """
+        if template is None:
+            template = settings.VIETQR_TEMPLATE
+            
+        encoded_desc = quote(description)
+        encoded_name = quote(account_name)
+        
+        url = (f"{self.base_url}/{bank_id}-{account_no}-{template}.jpg?"
+               f"amount={amount}&addInfo={encoded_desc}&accountName={encoded_name}")
+        
+        print(f"VietQR URL: {url}")
+        
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            # Mở ảnh từ response
+            image = Image.open(BytesIO(response.content))
+            
+            # Chuyển đổi sang RGB nếu cần
+            if image.mode in ('RGBA', 'LA', 'P'):
+                image = image.convert('RGB')
+            
+            # Lưu vào BytesIO
+            img_buffer = BytesIO()
+            image.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            print(f"✅ Tạo VietQR code thành công trong bộ nhớ")
+            return img_buffer
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Lỗi khi tải VietQR code: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Lỗi xử lý VietQR: {e}")
+            return None
+
+    def generate_qr_description(self, qr_type: str, instance_code: str) -> str:
+        """
+        Tạo description cho QR code dựa trên type
+        
+        Args:
+            qr_type (str): 'advance' hoặc 'payment'
+            instance_code (str): Instance code
+            
+        Returns:
+            str: QR description
+        """
+        if qr_type == 'advance':
+            return f"Tam ung don {instance_code}"
+        elif qr_type == 'payment':
+            return f"Thanh toan don {instance_code}"
+        else:
+            return f"Don {instance_code}"  # Fallback
+
+# Global service instance
+vietqr_service = VietQRService()
+
+============================================================
+
+============================================================
+FILE: app\utils\amount_detector.py
+============================================================
+from typing import Dict, List, Optional
+from app.config.node_config import get_node_config
+from app.utils.field_extractor import FieldExtractor
+
+class AmountDetector:
+    def __init__(self):
+        self.field_extractor = FieldExtractor()
+    
+    def detect_available_amount_fields(self, form_data: List[Dict], node_config: Dict = None) -> Dict:
+        """
+        Scan form data để tìm amount fields theo config của node
+        
+        Args:
+            form_data (list): Form data từ API response
+            node_config (dict): Node configuration (optional)
+            
+        Returns:
+            dict: Detection results với các fields và values
+        """
+        try:
+            # Sử dụng config từ node thay vì hardcode
+            if node_config:
+                advance_field = node_config.get('advance_field')
+                payment_field = node_config.get('payment_field')
+            else:
+                # Fallback cho backward compatibility
+                advance_field = "Số tiền tạm ứng"
+                payment_field = "Số tiền thanh toán"
+            
+            # Extract cả 2 fields (chỉ khi field name không phải None)
+            advance_value = self.field_extractor.extract_field_value(form_data, advance_field) if advance_field else None
+            payment_value = self.field_extractor.extract_field_value(form_data, payment_field) if payment_field else None
+            
+            # Debug: tìm tất cả fields có chứa "tiền" hoặc "amount" 
+            all_amount_fields = self.field_extractor.get_amount_fields(form_data)
+            
+            result = {
+                'advance_amount': advance_value,
+                'payment_amount': payment_value,
+                'advance_field_found': advance_value is not None,
+                'payment_field_found': payment_value is not None,
+                'all_amount_fields': all_amount_fields,
+                'fields_used': {
+                    'advance_field': advance_field,
+                    'payment_field': payment_field
+                }
+            }
+            
+            print(f"💰 Field detection results:")
+            if advance_field:
+                print(f"   - {advance_field}: {'✅ ' + str(advance_value) if advance_value else '❌ Not found'}")
+            else:
+                print(f"   - Advance field: ❌ Not configured")
+                
+            if payment_field:
+                print(f"   - {payment_field}: {'✅ ' + str(payment_value) if payment_value else '❌ Not found'}")
+            else:
+                print(f"   - Payment field: ❌ Not configured")
+                
+            print(f"   - All amount fields: {list(all_amount_fields.keys())}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error detecting amount fields: {e}")
+            return {
+                'advance_amount': None,
+                'payment_amount': None,
+                'advance_field_found': False,
+                'payment_field_found': False,
+                'all_amount_fields': {},
+                'fields_used': {'advance_field': None, 'payment_field': None},
+                'error': str(e)
+            }
+    
+    def determine_qr_type_by_fields(self, field_detection_result: Dict) -> Dict:
+        """
+        Quyết định QR type dựa trên fields có giá trị
+        
+        Args:
+            field_detection_result (dict): Kết quả từ detect_available_amount_fields()
+            
+        Returns:
+            dict: QR type decision result
+        """
+        try:
+            advance_found = field_detection_result.get('advance_field_found', False)
+            payment_found = field_detection_result.get('payment_field_found', False)
+            advance_amount = field_detection_result.get('advance_amount')
+            payment_amount = field_detection_result.get('payment_amount')
+
+            fields_used = field_detection_result.get('fields_used', {})
+            advance_field_name = fields_used.get('advance_field', 'Số tiền tạm ứng')
+            payment_field_name = fields_used.get('payment_field', 'Số tiền thanh toán')
+
+            print(f"🎯 Determining QR type: advance={advance_found}, payment={payment_found}")
+            
+            # Logic priority: advance trước, sau đó payment
+            if advance_found and advance_amount:
+                try:
+                    amount_value = float(advance_amount)
+                    if amount_value > 0:
+                        return {
+                            'qr_type': 'advance',
+                            'amount': amount_value,
+                            'field_used': advance_field_name,
+                            'reason': 'Found valid advance amount'
+                        }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid advance amount: {advance_amount}")
+            
+            if payment_found and payment_amount:
+                try:
+                    amount_value = float(payment_amount)
+                    if amount_value > 0:
+                        return {
+                            'qr_type': 'payment', 
+                            'amount': amount_value,
+                            'field_used': payment_field_name,
+                            'reason': 'Found valid payment amount'
+                        }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid payment amount: {payment_amount}")
+            
+            # Không tìm thấy field hợp lệ
+            return {
+                'qr_type': 'none',
+                'amount': None,
+                'field_used': None,
+                'reason': f'No valid amount found (advance_found={advance_found}, payment_found={payment_found})'
+            }
+            
+        except Exception as e:
+            print(f"❌ Error determining QR type: {e}")
+            return {
+                'qr_type': 'none',
+                'amount': None,
+                'field_used': None,
+                'reason': f'Error: {str(e)}'
+            }
+    
+    def get_amount_and_type_for_node(self, node_id: str, form_data: List[Dict]) -> Dict:
+        """
+        Lấy amount và QR type cho một node cụ thể dựa trên strategy của node đó
+        
+        Args:
+            node_id (str): Node ID
+            form_data (list): Form data từ API
+            
+        Returns:
+            dict: Processing result với success, qr_type, amount, etc.
+        """
+        try:
+            node_config = get_node_config(node_id)
+            if not node_config:
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'error': f'Node {node_id} not found in configuration'
+                }
+            
+            strategy = node_config['strategy']
+            node_name = node_config['name']
+            
+            print(f"🔍 Processing node: {node_name} (strategy: {strategy})")
+            
+            # Detect available fields
+            field_detection = self.detect_available_amount_fields(form_data, node_config)
+            
+            if strategy == "detect_both_fields":
+                # Dual detection: có thể là advance hoặc payment
+                qr_decision = self.determine_qr_type_by_fields(field_detection)
+                
+                return {
+                    'success': qr_decision['qr_type'] != 'none',
+                    'qr_type': qr_decision['qr_type'],
+                    'amount': qr_decision['amount'],
+                    'field_used': qr_decision['field_used'],
+                    'node_strategy': strategy,
+                    'reason': f"Dual detection result: {qr_decision['reason']}",
+                    'field_detection': field_detection
+                }
+                
+            elif strategy == "payment_field_only":
+                # Payment only: chỉ check payment field
+                payment_amount = field_detection.get('payment_amount')
+                payment_found = field_detection.get('payment_field_found', False)
+                payment_field_name = node_config.get('payment_field')
+
+                if payment_found and payment_amount:
+                    try:
+                        amount_value = float(payment_amount)
+                        if amount_value > 0:
+                            return {
+                                'success': True,
+                                'qr_type': 'payment',
+                                'amount': amount_value,
+                                'field_used': payment_field_name,
+                                'node_strategy': strategy,
+                                'reason': 'Payment-only strategy: found valid payment amount',
+                                'field_detection': field_detection
+                            }
+                    except (ValueError, TypeError):
+                        pass
+                
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'amount': None,
+                    'field_used': None,
+                    'node_strategy': strategy,
+                    'reason': f'Payment-only strategy: no valid payment amount (found={payment_found}, value={payment_amount})',
+                    'field_detection': field_detection
+                }
+            
+            else:
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'error': f'Unknown strategy: {strategy}'
+                }
+                
+        except Exception as e:
+            print(f"❌ Error processing node {node_id}: {e}")
+            return {
+                'success': False,
+                'qr_type': 'none',
+                'error': str(e)
+            }
+
+============================================================
+
+============================================================
+FILE: app\utils\field_extractor.py
+============================================================
+from typing import List, Dict, Any, Optional
+
+class FieldExtractor:
+    def extract_field_value(self, form_data: List[Dict], field_name: str, debug: bool = False) -> Optional[Any]:
+        """
+        Enhanced version: Trích xuất giá trị của một field từ form data với better error handling
+        
+        Args:
+            form_data (list): Form data từ API
+            field_name (str): Tên field cần tìm
+            debug (bool): In debug info
+            
+        Returns:
+            Giá trị field hoặc None nếu không tìm thấy
+        """
+        try:
+            if debug:
+                print(f"🔍 Searching for field: '{field_name}'")
+                
+            # Search in top-level fields
+            for field in form_data:
+                if field.get('name') == field_name:
+                    value = field.get('value')
+                    if debug:
+                        print(f"✅ Found '{field_name}' in top-level: {value}")
+                    return value
+                
+                # Search in nested fieldList
+                if field.get('type') == 'fieldList' and 'value' in field:
+                    field_list_values = field['value']
+                    if isinstance(field_list_values, list):
+                        for field_group in field_list_values:
+                            if isinstance(field_group, list):
+                                for sub_field in field_group:
+                                    if isinstance(sub_field, dict) and sub_field.get('name') == field_name:
+                                        value = sub_field.get('value')
+                                        if debug:
+                                            print(f"✅ Found '{field_name}' in fieldList: {value}")
+                                        return value
+            
+            if debug:
+                print(f"❌ Field '{field_name}' not found")
+                print("Available fields:", [f.get('name') for f in form_data if f.get('name')])
+                
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error extracting field '{field_name}': {e}")
+            return None
+
+    def get_all_field_names(self, form_data: List[Dict]) -> List[str]:
+        """
+        Lấy tất cả field names từ form data
+        
+        Args:
+            form_data: Form data từ API
+            
+        Returns:
+            List[str]: Danh sách tên fields
+        """
+        field_names = []
+        
+        try:
+            for field in form_data:
+                field_name = field.get('name')
+                if field_name:
+                    field_names.append(field_name)
+                
+                # Check nested fieldList
+                if field.get('type') == 'fieldList' and 'value' in field:
+                    field_list_values = field['value']
+                    if isinstance(field_list_values, list):
+                        for field_group in field_list_values:
+                            if isinstance(field_group, list):
+                                for sub_field in field_group:
+                                    if isinstance(sub_field, dict):
+                                        sub_field_name = sub_field.get('name')
+                                        if sub_field_name:
+                                            field_names.append(sub_field_name)
+        except Exception as e:
+            print(f"❌ Error getting field names: {e}")
+        
+        return list(set(field_names))  # Remove duplicates
+
+    def get_amount_fields(self, form_data: List[Dict]) -> Dict[str, Any]:
+        """
+        Tìm tất cả fields có chứa "tiền" hoặc "amount"
+        
+        Args:
+            form_data: Form data từ API
+            
+        Returns:
+            Dict[str, Any]: Dict với field name là key, value là giá trị
+        """
+        amount_fields = {}
+        
+        try:
+            for field in form_data:
+                field_name = field.get('name', '').lower()
+                if 'tiền' in field_name or 'amount' in field_name:
+                    amount_fields[field.get('name')] = field.get('value')
+        except Exception as e:
+            print(f"❌ Error getting amount fields: {e}")
+        
+        return amount_fields
+
+============================================================
+
+============================================================
+FILE: app\utils\helpers.py
+============================================================
+from typing import Optional, Dict, Any
+from datetime import datetime
+import pandas as pd
+import json
+import os
+
+def extract_instance_code(event_data: Dict) -> Optional[str]:
+    """Trích xuất instance_code từ event"""
+    try:
+        event_body = event_data.get("event", {})
+        if "instance_code" in event_body:
+            return event_body["instance_code"]
+            
+        if "object" in event_body and "instance_code" in event_body["object"]:
+            return event_body["object"]["instance_code"]
+            
+        return None
+    except:
+        return None
+
+def get_event_type(event_data: Dict) -> str:
+    """Lấy event type"""
+    try:
+        if "header" in event_data:
+            return event_data["header"].get("event_type", "unknown")
+        
+        if "event" in event_data and "type" in event_data["event"]:
+            return event_data["event"]["type"]
+            
+        return event_data.get("type", "unknown")
+    except:
+        return "unknown"
+
+async def save_event_to_csv(event_data: Dict, events_file: str = "lark_events.csv"):
+    """Lưu event vào CSV"""
+    try:
+        row_data = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": get_event_type(event_data),
+            "instance_code": extract_instance_code(event_data),
+            "raw_event": json.dumps(event_data, ensure_ascii=False)
+        }
+        
+        df = pd.DataFrame([row_data])
+        
+        if os.path.exists(events_file):
+            df.to_csv(events_file, mode='a', header=False, index=False, encoding='utf-8')
+        else:
+            df.to_csv(events_file, mode='w', header=True, index=False, encoding='utf-8')
+            
+        print(f"✅ Event saved to {events_file}")
+        
+    except Exception as e:
+        print(f"❌ Error saving event: {e}")
+
+def format_currency(amount: float) -> str:
+    """Format số tiền theo định dạng VND"""
+    return f"{amount:,} VND"
+
+def get_short_node_id(node_id: str, length: int = 8) -> str:
+    """Get short version of node ID for display"""
+    return node_id[:length] + "..." if len(node_id) > length else node_id
+
+============================================================
+
+============================================================
+FILE: project_complete_info.txt
+============================================================
+================================================================================
+THÔNG TIN DỰ ÁN HOÀN CHỈNH
+================================================================================
+Thời gian tạo: 2025-09-15 15:59:24
+Thư mục gốc: d:\Atino\extension\webhook-server-approval
+================================================================================
+
+📁 CẤU TRÚC THU MỤC
+--------------------------------------------------
+├── 📁 app/
+│   ├── 📁 config/
+│   │   ├── 📄 node_config.py
+│   │   └── 📄 settings.py
+│   ├── 📁 models/
+│   │   ├── 📄 approval.py
+│   │   ├── 📄 event.py
+│   │   └── 📄 response.py
+│   ├── 📁 routers/
+│   │   ├── 📄 config.py
+│   │   ├── 📄 debug.py
+│   │   ├── 📄 manual.py
+│   │   └── 📄 webhook.py
+│   ├── 📁 services/
+│   │   ├── 📄 cache_service.py
+│   │   ├── 📄 lark_service.py
+│   │   ├── 📄 qr_processor.py
+│   │   ├── 📄 validation_service.py
+│   │   └── 📄 vietqr_service.py
+│   ├── 📁 utils/
+│   │   ├── 📄 amount_detector.py
+│   │   ├── 📄 field_extractor.py
+│   │   └── 📄 helpers.py
+├── 📄 .gitignore
+├── 📄 Dockerfile
+├── 📄 Get detail code.ipynb
+├── 📄 project_complete_info.txt
+├── 📄 README.md
+└── 📄 requirements.txt
+
+
+📄 DANH SÁCH TẤT CẢ FILE
+--------------------------------------------------
+.gitignore (594 bytes)
+app\config\node_config.py (2877 bytes)
+app\config\settings.py (1261 bytes)
+app\models\approval.py (1584 bytes)
+app\models\event.py (899 bytes)
+app\models\response.py (1015 bytes)
+app\routers\config.py (1637 bytes)
+app\routers\debug.py (3444 bytes)
+app\routers\manual.py (2574 bytes)
+app\routers\webhook.py (1789 bytes)
+app\services\cache_service.py (4384 bytes)
+app\services\lark_service.py (8266 bytes)
+app\services\qr_processor.py (15166 bytes)
+app\services\validation_service.py (8994 bytes)
+app\services\vietqr_service.py (3010 bytes)
+app\utils\amount_detector.py (10152 bytes)
+app\utils\field_extractor.py (4442 bytes)
+app\utils\helpers.py (2198 bytes)
+Dockerfile (726 bytes)
+Get detail code.ipynb (9345 bytes)
+project_complete_info.txt (0 bytes)
+README.md (779 bytes)
+requirements.txt (136 bytes)
+
+Tổng cộng: 23 file
+
+💻 NỘI DUNG TẤT CẢ FILE CODE
+================================================================================
+
+============================================================
+FILE: app\config\node_config.py
+============================================================
+"""Node configuration for different approval workflows"""
+
+NODE_CONFIG = {
+    "30e5338b60587c64c7cef5f6a7211ccb": {
+        "name": "truong_phong_duyet",
+        "type": "dual_detection",
+        "advance_field": "Số tiền tạm ứng",
+        "payment_field": "Số tiền thanh toán",
+        "strategy": "detect_both_fields",
+        "required_status": "PENDING",
+        "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+    },
+    "f23535375a26847ef71c1cbf0755f246": {
+        "name": "thanh_toan_sau_tam_ung", 
+        "type": "payment_only",
+        "advance_field": None,
+        "payment_field": "Số tiền còn phải thanh toán",
+        "strategy": "payment_field_only",
+        "required_status": "APPROVED",
+        "additional_conditions": [
+            {
+                "node_id": "ef83b231885a1a77658f32808a199764",
+                "required_status": "PENDING",
+                "description": "Node tiếp theo phải PENDING"
+            }
+        ],
+        "description": "Thanh toán sau tạm ứng - Payment only (trigger on APPROVED + next node PENDING)"
+    }
+}
+
+def get_node_config(node_id: str) -> dict:
+    """
+    Lấy configuration cho một node_id cụ thể
+    
+    Args:
+        node_id (str): Node ID cần lấy config
+        
+    Returns:
+        dict: Node config hoặc None nếu không tìm thấy
+    """
+    return NODE_CONFIG.get(node_id)
+
+def get_node_strategy(node_id: str) -> str:
+    """
+    Lấy strategy của một node
+    
+    Args:
+        node_id (str): Node ID
+        
+    Returns:
+        str: Strategy name hoặc "unknown" nếu không tìm thấy
+    """
+    config = get_node_config(node_id)
+    return config.get("strategy", "unknown") if config else "unknown"
+
+def print_node_config_summary():
+    """Print summary của NODE_CONFIG với additional conditions"""
+    print("📋 NODE_CONFIG Summary:")
+    for node_id, config in NODE_CONFIG.items():
+        required_status = config.get('required_status', 'PENDING')
+        additional_conditions = config.get('additional_conditions', [])
+        
+        print(f"   • {node_id[:8]}... - {config['name']} ({config['strategy']})")
+        print(f"     Fields: advance='{config['advance_field']}', payment='{config['payment_field']}'")
+        print(f"     Required Status: {required_status}")
+        
+        if additional_conditions:
+            print(f"     Additional Conditions:")
+            for condition in additional_conditions:
+                print(f"       - {condition['node_id'][:8]}... must be {condition['required_status']}")
+
+def get_configured_node_ids():
+    """Trả về list tất cả node IDs được cấu hình"""
+    return list(NODE_CONFIG.keys())
+
+# Backward compatibility
+ALLOWED_NODE_IDS = get_configured_node_ids()
+
+============================================================
+
+============================================================
+FILE: app\config\settings.py
+============================================================
+import os
+from typing import Optional
+
+class Settings:
+    # FastAPI settings
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    PORT: int = int(os.getenv("PORT", "8000"))
+    
+    # Lark API settings
+    LARK_APP_ID: str = os.getenv("LARK_APP_ID", "cli_a758ffaf41f8502f")
+    LARK_APP_SECRET: str = os.getenv("LARK_APP_SECRET", "45Jsgm3TYfEwD2F67BH1LctlYEcCjZpH")
+    BASE_URL: str = "https://open.larksuite.com/open-apis"
+    APPROVAL_UPLOAD_URL: str = "https://www.larksuite.com/approval/openapi/v2/file/upload"
+    
+    # VietQR settings
+    VIETQR_TEMPLATE: str = "compact2"
+    VIETQR_BASE_URL: str = "https://img.vietqr.io/image"
+    
+    # Cache settings
+    QR_CACHE_DURATION_MINUTES: int = 5
+    TOKEN_CACHE_BUFFER_SECONDS: int = 300  # 5 minutes buffer
+    
+    # File settings
+    EVENTS_FILE: str = "lark_events.csv"
+    
+    # Default user for comments
+    DEFAULT_USER_ID: str = "cd11b141"
+    
+    # Validation settings (for future extensions)
+    ENABLE_AMOUNT_VALIDATION: bool = os.getenv("ENABLE_AMOUNT_VALIDATION", "false").lower() == "true"
+    ENABLE_WORKFLOW_ALERTS: bool = os.getenv("ENABLE_WORKFLOW_ALERTS", "false").lower() == "true"
+
+# Global settings instance
+settings = Settings()
+
+============================================================
+
+============================================================
+FILE: app\models\approval.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+
+class FormField(BaseModel):
+    name: Optional[str] = None
+    type: Optional[str] = None
+    value: Optional[Any] = None
+
+class TaskInfo(BaseModel):
+    node_id: Optional[str] = None
+    status: Optional[str] = None
+    task_id: Optional[str] = None
+    node_name: Optional[str] = None
+
+class ApprovalInstance(BaseModel):
+    instance_code: str
+    status: Optional[str] = None
+    form: Optional[str] = None
+    task_list: Optional[List[TaskInfo]] = None
+
+class AmountDetectionResult(BaseModel):
+    advance_amount: Optional[float] = None
+    payment_amount: Optional[float] = None
+    advance_field_found: bool = False
+    payment_field_found: bool = False
+    all_amount_fields: Dict[str, Any] = {}
+    fields_used: Dict[str, Optional[str]] = {}
+
+class QRTypeResult(BaseModel):
+    qr_type: str  # 'advance', 'payment', 'none'
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    reason: str
+
+class NodeProcessingResult(BaseModel):
+    success: bool
+    qr_type: str = 'none'
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    node_strategy: Optional[str] = None
+    reason: Optional[str] = None
+    error: Optional[str] = None
+    field_detection: Optional[AmountDetectionResult] = None
+
+class ValidationResult(BaseModel):
+    """Model for validation results - extensible for future validations"""
+    is_valid: bool
+    validation_type: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+============================================================
+
+============================================================
+FILE: app\models\event.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
+from datetime import datetime
+
+class EventHeader(BaseModel):
+    event_id: Optional[str] = None
+    event_type: Optional[str] = None
+    create_time: Optional[str] = None
+    token: Optional[str] = None
+    tenant_key: Optional[str] = None
+    app_id: Optional[str] = None
+
+class EventBody(BaseModel):
+    instance_code: Optional[str] = None
+    type: Optional[str] = None
+    object: Optional[Dict[str, Any]] = None
+
+class LarkEvent(BaseModel):
+    schema: Optional[str] = None
+    header: Optional[EventHeader] = None
+    event: Optional[EventBody] = None
+    type: Optional[str] = None  # For URL verification
+    challenge: Optional[str] = None  # For URL verification
+
+class EventRecord(BaseModel):
+    timestamp: datetime
+    event_type: str
+    instance_code: Optional[str]
+    raw_event: str
+
+============================================================
+
+============================================================
+FILE: app\models\response.py
+============================================================
+from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+
+class APIResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+class UploadResult(BaseModel):
+    success: bool
+    file_code: Optional[str] = None
+    file_url: Optional[str] = None
+    error: Optional[str] = None
+
+class CommentResult(BaseModel):
+    success: bool
+    comment_id: Optional[str] = None
+    error: Optional[str] = None
+
+class QRGenerationResult(BaseModel):
+    success: bool
+    qr_type: Optional[str] = None
+    amount: Optional[float] = None
+    field_used: Optional[str] = None
+    node_name: Optional[str] = None
+    comment_id: Optional[str] = None
+    error: Optional[str] = None
+    processing_info: Optional[Dict[str, Any]] = None
+
+class CacheStatus(BaseModel):
+    total_cached_qr: int
+    active_cache: Dict[str, Dict[str, Any]]
+    cache_duration_minutes: int
+    current_time: str
+
+============================================================
+
+============================================================
+FILE: app\routers\config.py
+============================================================
+from fastapi import APIRouter
+from app.config.node_config import NODE_CONFIG, get_node_config, get_configured_node_ids
+from app.services.cache_service import cache_service
+
+router = APIRouter()
+
+@router.get("/node-ids")
+async def get_allowed_node_ids():
+    """Xem danh sách allowed node IDs hiện tại"""
+    return {
+        "allowed_node_ids": get_configured_node_ids(),
+        "total_allowed": len(NODE_CONFIG)
+    }
+
+@router.get("/nodes")
+async def get_node_configuration():
+    """Xem chi tiết NODE_CONFIG"""
+    return {
+        "node_config": NODE_CONFIG,
+        "total_nodes": len(NODE_CONFIG),
+        "configured_node_ids": list(NODE_CONFIG.keys()),
+        "strategies": {
+            node_id: config["strategy"] 
+            for node_id, config in NODE_CONFIG.items()
+        }
+    }
+
+@router.get("/nodes/{node_id}")
+async def get_specific_node_config(node_id: str):
+    """Xem config của một node cụ thể"""
+    config = get_node_config(node_id)
+    if config:
+        return {
+            "node_id": node_id,
+            "config": config,
+            "short_id": node_id[:8] + "..."
+        }
+    else:
+        return {
+            "error": f"Node ID {node_id} not found in configuration",
+            "available_nodes": list(NODE_CONFIG.keys())
+        }
+
+@router.get("/cache/qr-status")
+async def get_qr_cache_status():
+    """Xem trạng thái cache QR generation"""
+    return cache_service.get_cache_status()
+
+@router.post("/cache/clear")
+async def clear_qr_cache():
+    """Clear cache QR generation manually"""
+    return cache_service.clear_cache()
+
+============================================================
+
+============================================================
+FILE: app\routers\debug.py
+============================================================
+from fastapi import APIRouter
+import json
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.amount_detector import AmountDetector
+from app.config.node_config import NODE_CONFIG
+
+router = APIRouter()
+amount_detector = AmountDetector()
+
+@router.get("/instance/{instance_code}")
+async def debug_instance(instance_code: str):
+    """Debug instance với NODE_CONFIG"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"error": "Cannot get access token"}
+        
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        if not api_response:
+            return {"error": "Cannot get instance data"}
+        
+        # Sử dụng function với NODE_CONFIG
+        check_result = qr_processor.check_pending_allowed_node_in_task_list(api_response)
+        
+        return {
+            "instance_code": instance_code,
+            "node_check_result": check_result,
+            "node_config": NODE_CONFIG,
+            "will_generate_qr": check_result['found'],
+            "reason": f"Found {check_result.get('strategy', 'unknown')} node with required status" if check_result['found'] else "No matching configured nodes found"
+        }
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/instance/{instance_code}/fields")
+async def debug_instance_fields(instance_code: str):
+    """Debug chi tiết về fields trong form của instance"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"error": "Cannot get access token"}
+        
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        if not api_response:
+            return {"error": "Cannot get instance data"}
+            
+        if 'data' not in api_response or 'form' not in api_response['data']:
+            return {"error": "No form data found"}
+            
+        form_str = api_response['data']['form']
+        form_data = json.loads(form_str)
+        
+        # Enhanced field detection
+        field_detection = amount_detector.detect_available_amount_fields(form_data)
+        
+        # Test với tất cả configured nodes
+        node_results = {}
+        for node_id, config in NODE_CONFIG.items():
+            node_result = amount_detector.get_amount_and_type_for_node(node_id, form_data)
+            node_results[config['name']] = {
+                'node_id': node_id[:8] + '...',
+                'strategy': config['strategy'],
+                'result': node_result
+            }
+        
+        # Extract tất cả field names để debug
+        all_fields = []
+        for field in form_data:
+            field_info = {
+                'name': field.get('name'),
+                'type': field.get('type'),
+                'value': field.get('value')
+            }
+            all_fields.append(field_info)
+        
+        return {
+            "instance_code": instance_code,
+            "field_detection": field_detection,
+            "node_processing_results": node_results,
+            "all_form_fields": all_fields,
+            "total_fields": len(all_fields)
+        }
+            
+    except Exception as e:
+        return {"error": str(e)}
+
+============================================================
+
+============================================================
+FILE: app\routers\manual.py
+============================================================
+from fastapi import APIRouter
+import json
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.amount_detector import AmountDetector
+import os
+import pandas as pd
+from app.config.settings import settings
+
+router = APIRouter()
+amount_detector = AmountDetector()
+
+@router.post("/process/{instance_code}")
+async def manual_process_instance(instance_code: str):
+    """Enhanced manual processing với detailed results"""
+    try:
+        access_token = await lark_service.get_access_token()
+        if not access_token:
+            return {"success": False, "error": "Cannot get access token"}
+        
+        # Get detailed processing info trước khi process
+        api_response = await lark_service.get_approval_instance(instance_code, access_token)
+        
+        processing_info = {"instance_code": instance_code}
+        
+        if api_response:
+            # Get node check info
+            node_check = qr_processor.check_pending_allowed_node_in_task_list(api_response)
+            processing_info["node_check"] = node_check
+            
+            # Get field detection info if node found
+            if node_check['found'] and 'data' in api_response and 'form' in api_response['data']:
+                form_str = api_response['data']['form']
+                form_data = json.loads(form_str)
+                
+                node_id = node_check['node_id']
+                amount_result = amount_detector.get_amount_and_type_for_node(node_id, form_data)
+                processing_info["amount_detection"] = amount_result
+        
+        # Process the instance
+        result = await qr_processor.process_approval_with_qr_comment(instance_code, access_token)
+        
+        return {
+            "success": result,
+            "message": f"{'Successfully processed' if result else 'Failed to process'} instance {instance_code}",
+            "processing_info": processing_info
+        }
+            
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@router.get("/events")
+async def get_events():
+    """Xem events đã nhận"""
+    try:
+        if os.path.exists(settings.EVENTS_FILE):
+            df = pd.read_csv(settings.EVENTS_FILE, encoding='utf-8')
+            return {
+                "total_events": len(df),
+                "latest_events": df.tail(20).to_dict('records')
+            }
+        return {"message": "No events found"}
+    except Exception as e:
+        return {"error": str(e)}
+
+============================================================
+
+============================================================
+FILE: app\routers\webhook.py
+============================================================
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from app.services.lark_service import lark_service
+from app.services.qr_processor import qr_processor
+from app.utils.helpers import save_event_to_csv, get_event_type, extract_instance_code
+from app.config.settings import settings
+
+router = APIRouter()
+
+@router.post("/webhook")
+async def handle_lark_webhook(request: Request):
+    try:
+        data = await request.json()
+        print(f"📨 Received webhook: {get_event_type(data)}")
+        
+        # Handle URL verification
+        if data.get("type") == "url_verification":
+            return JSONResponse(content={"challenge": data.get("challenge")})
+        
+        # Lưu event vào CSV
+        await save_event_to_csv(data, settings.EVENTS_FILE)
+        
+        # Xử lý approval event
+        event_type = get_event_type(data)
+        if "approval" in event_type.lower():
+            instance_code = extract_instance_code(data)
+            if instance_code:
+                print(f"🔍 Processing approval instance: {instance_code}")
+                
+                # Lấy access token
+                access_token = await lark_service.get_access_token()
+                if access_token:
+                    # Xử lý tự động: check node_id -> lấy thông tin -> tạo QR -> upload -> comment
+                    await qr_processor.process_approval_with_qr_comment(instance_code, access_token)
+                else:
+                    print("❌ Không thể lấy access token")
+        
+        return JSONResponse(content={"status": "success"})
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+============================================================
+
+============================================================
+FILE: app\services\cache_service.py
+============================================================
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
+class CacheService:
+    def __init__(self):
+        self.qr_generation_cache: Dict[str, datetime] = {}
+    
+    def generate_cache_key(self, instance_code: str, node_id: str, qr_type: str) -> str:
+        """
+        Tạo cache key để detect duplicate
+        
+        Args:
+            instance_code (str): Instance code
+            node_id (str): Node ID (8 ký tự đầu)
+            qr_type (str): 'advance' hoặc 'payment'
+            
+        Returns:
+            str: Unique cache key
+        """
+        short_node_id = node_id[:8] if len(node_id) > 8 else node_id
+        return f"{instance_code}_{short_node_id}_{qr_type}"
+
+    def is_qr_recently_generated(self, instance_code: str, node_id: str, qr_type: str, 
+                               cache_duration_minutes: int = 5) -> bool:
+        """
+        Check xem QR đã được tạo trong thời gian gần đây chưa
+        
+        Returns:
+            bool: True nếu đã tạo gần đây, False nếu chưa hoặc đã hết hạn
+        """
+        try:
+            cache_key = self.generate_cache_key(instance_code, node_id, qr_type)
+            
+            if cache_key not in self.qr_generation_cache:
+                print(f"🆕 Cache miss: {cache_key} - chưa tạo QR")
+                return False
+            
+            generated_time = self.qr_generation_cache[cache_key]
+            current_time = datetime.now()
+            time_diff = current_time - generated_time
+            
+            if time_diff > timedelta(minutes=cache_duration_minutes):
+                del self.qr_generation_cache[cache_key] 
+                print(f"⏰ Cache expired: {cache_key} ({time_diff.total_seconds()/60:.1f} minutes ago)")
+                return False
+            
+            print(f"🔒 Cache hit: {cache_key} - QR đã tạo {time_diff.total_seconds()/60:.1f} phút trước")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error checking cache: {e}")
+            return False
+
+    def mark_qr_as_generated(self, instance_code: str, node_id: str, qr_type: str):
+        """Đánh dấu QR đã được tạo"""
+        try:
+            cache_key = self.generate_cache_key(instance_code, node_id, qr_type)
+            self.qr_generation_cache[cache_key] = datetime.now()
+            
+            print(f"🔒 Marked QR as generated: {cache_key}")
+            print(f"📊 Cache size: {len(self.qr_generation_cache)} entries")
+            
+        except Exception as e:
+            print(f"❌ Error marking cache: {e}")
+
+    def get_cache_status(self) -> Dict:
+        """Lấy trạng thái cache"""
+        try:
+            current_time = datetime.now()
+            active_cache = {}
+            
+            for cache_key, generated_time in self.qr_generation_cache.items():
+                time_diff = current_time - generated_time
+                minutes_ago = time_diff.total_seconds() / 60
+                
+                active_cache[cache_key] = {
+                    'generated_at': generated_time.isoformat(),
+                    'minutes_ago': round(minutes_ago, 1),
+                    'will_expire_in_minutes': max(0, 5 - minutes_ago)
+                }
+            
+            return {
+                'total_cached_qr': len(self.qr_generation_cache),
+                'active_cache': active_cache,
+                'cache_duration_minutes': 5,
+                'current_time': current_time.isoformat()
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+
+    def clear_cache(self) -> Dict:
+        """Clear tất cả cache"""
+        try:
+            old_count = len(self.qr_generation_cache)
+            old_keys = list(self.qr_generation_cache.keys())
+            
+            self.qr_generation_cache.clear()
+            
+            return {
+                'message': f'Successfully cleared {old_count} cache entries',
+                'cleared_keys': old_keys,
+                'current_cache_size': len(self.qr_generation_cache)
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+# Global cache instance
+cache_service = CacheService()
+
+============================================================
+
+============================================================
+FILE: app\services\lark_service.py
+============================================================
+import requests
+import json
+from datetime import datetime
+from typing import Optional, Dict, Any
+from app.config.settings import settings
+
+class LarkService:
+    def __init__(self):
+        self.access_token_cache = {"token": None, "expires_at": None}
+    
+    async def get_access_token(self) -> Optional[str]:
+        """Lấy access token từ LarkSuite với caching"""
+        current_time = datetime.now().timestamp()
+        
+        if (self.access_token_cache["token"] and 
+            self.access_token_cache["expires_at"] and 
+            current_time < self.access_token_cache["expires_at"]):
+            return self.access_token_cache["token"]
+        
+        try:
+            url = f"{settings.BASE_URL}/auth/v3/tenant_access_token/internal"
+            payload = {
+                "app_id": settings.LARK_APP_ID,
+                "app_secret": settings.LARK_APP_SECRET
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            data = response.json()
+            
+            if data.get("code") == 0:
+                token = data["tenant_access_token"]
+                expires_in = data.get("expire", 7200)
+                
+                self.access_token_cache["token"] = token
+                self.access_token_cache["expires_at"] = current_time + expires_in - settings.TOKEN_CACHE_BUFFER_SECONDS
+                
+                print(f"✅ Got access token")
+                return token
+            else:
+                print(f"❌ Failed to get token: {data}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Error getting token: {e}")
+            return None
+
+    async def get_approval_instance(self, instance_code: str, access_token: str) -> Optional[Dict]:
+        """Lấy thông tin approval instance"""
+        try:
+            url = f"{settings.BASE_URL}/approval/v4/instances/{instance_code}"
+            headers = {"Authorization": f"Bearer {access_token}"}
+            
+            print(f"🔍 Lấy thông tin instance: {instance_code}")
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code != 200:
+                print(f"❌ Lỗi API call: {response.status_code}")
+                return None
+                
+            api_response = response.json()
+            
+            if api_response.get("code") != 0:
+                print(f"❌ API response error: {api_response}")
+                return None
+                
+            return api_response
+            
+        except Exception as e:
+            print(f"❌ Error getting approval instance: {e}")
+            return None
+
+    async def upload_image_to_approval(self, image_buffer, filename: str, access_token: str) -> Dict:
+        """Upload ảnh lên Lark Approval API"""
+        try:
+            image_buffer.seek(0)
+            
+            files = {
+                'name': (None, filename),
+                'type': (None, 'image'),
+                'content': (filename, image_buffer, 'image/png')
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {access_token}'
+            }
+            
+            print(f"📤 Đang upload ảnh: {filename}")
+            response = requests.post(settings.APPROVAL_UPLOAD_URL, files=files, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('code') == 0:
+                    file_code = data['data']['code']
+                    file_url = data['data']['url']
+                    print(f'✅ Upload ảnh thành công! File code: {file_code}')
+                    return {
+                        'success': True,
+                        'file_code': file_code,
+                        'file_url': file_url
+                    }
+                else:
+                    error_msg = f"API error: {data.get('msg')} (code: {data.get('code')})"
+                    print(f'❌ Upload thất bại: {error_msg}')
+                    return {'success': False, 'error': error_msg}
+            else:
+                error_msg = f"HTTP error: {response.status_code}"
+                print(f'❌ Upload thất bại: {error_msg}')
+                return {'success': False, 'error': error_msg}
+                
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            print(f"❌ Lỗi upload: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+    async def create_enhanced_comment_with_image(self, instance_code: str, file_url: str, file_code: str, 
+                                               filename: str, qr_type: str, amount: int, node_name: str,
+                                               access_token: str, user_id: str = None) -> Dict:
+        """Tạo comment với ảnh và thông tin chi tiết"""
+        try:
+            if user_id is None:
+                user_id = settings.DEFAULT_USER_ID
+                
+            create_comment_url = f'{settings.BASE_URL}/approval/v4/instances/{instance_code}/comments'
+            
+            params = {
+                "user_id": user_id,
+                "user_id_type": "user_id"
+            }
+            
+            # Enhanced comment text với type info
+            qr_type_display = {
+                'advance': 'TẠM ỨNG',
+                'payment': 'THANH TOÁN'
+            }
+            
+            comment_text = f"""🏦 Mã VietQR {qr_type_display.get(qr_type, qr_type.upper())}
+            💰 Số tiền: {amount:,} VND
+            📋 Node: {node_name}
+            📄 Instance: {instance_code}"""
+
+            # Estimate file size
+            try:
+                file_size = len(filename) * 100  # Rough estimate
+            except:
+                file_size = 50000  # Default estimate
+            
+            content_data = {
+                "text": comment_text,
+                "files": [{
+                    "url": file_url,
+                    "fileSize": file_size,
+                    "title": filename,
+                    "type": "image",
+                    "extra": file_code
+                }]
+            }
+            
+            request_body = {
+                "content": json.dumps(content_data, ensure_ascii=False)
+            }
+            
+            headers_comment = {
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            print(f"📤 Đang tạo enhanced comment cho instance: {instance_code}")
+            print(f"   Comment: {comment_text.replace(chr(10), ' | ')}")
+            
+            response = requests.post(
+                create_comment_url, 
+                params=params,
+                json=request_body, 
+                headers=headers_comment
+            )
+            
+            if response.status_code == 200:
+                comment_result = response.json()
+                if comment_result.get('code') == 0:
+                    comment_id = comment_result.get("data", {}).get("comment_id", "N/A")
+                    print(f'✅ Tạo enhanced comment thành công! Comment ID: {comment_id}')
+                    return {'success': True, 'comment_id': comment_id}
+                else:
+                    error_msg = f"API error: {comment_result.get('msg')} (code: {comment_result.get('code')})"
+                    print(f'❌ Tạo comment thất bại: {error_msg}')
+                    return {'success': False, 'error': error_msg}
+            else:
+                error_msg = f"HTTP error: {response.status_code}"
+                print(f'❌ Tạo comment thất bại: {error_msg}')
+                return {'success': False, 'error': error_msg}
+                
+        except Exception as e:
+            error_msg = f"Exception: {str(e)}"
+            print(f"❌ Lỗi tạo enhanced comment: {error_msg}")
+            return {'success': False, 'error': error_msg}
+
+# Global service instance
+lark_service = LarkService()
+
+============================================================
+
+============================================================
+FILE: app\services\qr_processor.py
+============================================================
+"""
+QR Processing Service - Main business logic for QR generation and processing
+"""
+import json
+from typing import Dict, Optional, List
+from app.config.settings import settings
+from app.config.node_config import NODE_CONFIG, get_node_config
+from app.services.lark_service import lark_service
+from app.services.vietqr_service import vietqr_service
+from app.services.cache_service import cache_service
+from app.services.validation_service import validation_service
+from app.utils.field_extractor import FieldExtractor
+from app.utils.amount_detector import AmountDetector
+from app.models.approval import NodeProcessingResult
+
+class QRProcessor:
+    def __init__(self):
+        self.field_extractor = FieldExtractor()
+        self.amount_detector = AmountDetector()
+    
+    def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
+        """
+        Kiểm tra node có status phù hợp + additional conditions
+        """
+        if node_config is None:
+            node_config = NODE_CONFIG
+            
+        try:
+            data = api_response.get('data', {})
+            task_list = data.get('task_list', [])
+            configured_node_ids = list(node_config.keys())
+            
+            # Tạo dict để lookup status của tất cả nodes
+            node_status_map = {}
+            for task in task_list:
+                node_id = task.get('node_id')
+                status = task.get('status', 'UNKNOWN')
+                if node_id:
+                    node_status_map[node_id] = status
+            
+            print(f"🔍 Checking nodes with additional conditions:")
+            for node_id, config in node_config.items():
+                required_status = config.get('required_status', 'PENDING')
+                additional_conditions = config.get('additional_conditions', [])
+                print(f"   • {node_id[:8]}... - {config['name']} (requires: {required_status})")
+                if additional_conditions:
+                    for condition in additional_conditions:
+                        print(f"     + Additional: {condition['node_id'][:8]}... must be {condition['required_status']}")
+            
+            print(f"📋 Task list contains {len(task_list)} tasks")
+            
+            matching_configured_nodes = []
+            
+            for node_id in configured_node_ids:
+                config = node_config[node_id]
+                required_status = config.get('required_status', 'PENDING')
+                current_status = node_status_map.get(node_id, 'NOT_FOUND')
+                
+                # Check primary condition
+                if current_status != required_status:
+                    continue
+                    
+                # Check additional conditions
+                additional_conditions = config.get('additional_conditions', [])
+                all_conditions_met = True
+                
+                for condition in additional_conditions:
+                    condition_node_id = condition['node_id']
+                    condition_required_status = condition['required_status']
+                    condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
+                    
+                    print(f"🔍 Checking additional condition: {condition_node_id[:8]}... ")
+                    print(f"   Required: {condition_required_status}, Current: {condition_current_status}")
+                    
+                    if condition_current_status != condition_required_status:
+                        all_conditions_met = False
+                        print(f"❌ Additional condition not met for {node_id[:8]}...")
+                        break
+                    else:
+                        print(f"✅ Additional condition met")
+                
+                if all_conditions_met:
+                    matching_configured_nodes.append({
+                        'node_id': node_id,
+                        'config': config,
+                        'strategy': config['strategy'],
+                        'matched_status': current_status,
+                        'required_status': required_status,
+                        'additional_conditions_met': True
+                    })
+                    print(f"✅ Full match found: {node_id[:8]}... ({config['name']}) - Status: {current_status}")
+            
+            # Return first matching configured node
+            if matching_configured_nodes:
+                first_matching = matching_configured_nodes[0]
+                return {
+                    'found': True,
+                    'node_id': first_matching['node_id'],
+                    'node_config': first_matching['config'],
+                    'strategy': first_matching['strategy'],
+                    'matched_status': first_matching['matched_status'],
+                    'required_status': first_matching['required_status'],
+                    'all_tasks': task_list,
+                    'all_matching_configured': matching_configured_nodes,
+                    'node_status_map': node_status_map
+                }
+            else:
+                print(f"❌ No nodes matching all conditions found")
+                return {
+                    'found': False,
+                    'node_id': None,
+                    'node_config': None,
+                    'strategy': None,
+                    'matched_status': None,
+                    'all_tasks': task_list,
+                    'all_matching_configured': [],
+                    'node_status_map': node_status_map
+                }
+            
+        except Exception as e:
+            print(f"❌ Error checking nodes: {e}")
+            return {
+                'found': False,
+                'error': str(e),
+                'all_tasks': [],
+                'all_matching_configured': []
+            }
+    
+    def validate_amount_value(self, amount_value) -> dict:
+        """Validate và convert amount value"""
+        try:
+            if amount_value is None:
+                return {'valid': False, 'amount': None, 'error': 'Amount is None'}
+                
+            # Convert to float first, then int
+            amount_float = float(amount_value)
+            amount_int = int(amount_float)
+            
+            if amount_int <= 0:
+                return {'valid': False, 'amount': amount_int, 'error': 'Amount must be positive'}
+                
+            return {'valid': True, 'amount': amount_int, 'error': None}
+            
+        except (ValueError, TypeError) as e:
+            return {'valid': False, 'amount': None, 'error': f'Invalid amount format: {str(e)}'}
+    
+    async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
+        """
+        Enhanced version với duplicate detection và validation
+        Xử lý approval với smart field detection, multiple node support và flexible status requirements
+        """
+        try:
+            # Lấy instance details
+            api_response = await lark_service.get_approval_instance(instance_code, access_token)
+            if not api_response:
+                return False
+            
+            # Check nodes với required status
+            node_check_result = self.check_pending_allowed_node_in_task_list(api_response)
+            
+            if not node_check_result['found']:
+                print(f"⏭️ Skipping QR generation - no matching configured nodes found")
+                return True  # Return True vì không phải lỗi, chỉ là skip
+            
+            matching_node_id = node_check_result['node_id']
+            node_config = node_check_result['node_config']
+            node_strategy = node_check_result['strategy']
+            matched_status = node_check_result.get('matched_status', 'UNKNOWN')
+            required_status = node_check_result.get('required_status', 'PENDING')
+            
+            print(f"✅ Processing node: {node_config['name']} (strategy: {node_strategy})")
+            print(f"   Status: {matched_status} (required: {required_status})")
+            
+            # Extract form data
+            if 'data' not in api_response or 'form' not in api_response['data']:
+                print("❌ Không tìm thấy form data")
+                return False
+                
+            form_str = api_response['data']['form']
+            form_data = json.loads(form_str)
+            
+            # NEW: Run validations if enabled
+            if settings.ENABLE_AMOUNT_VALIDATION or settings.ENABLE_WORKFLOW_ALERTS:
+                task_list = api_response.get('data', {}).get('task_list', [])
+                validation_results = validation_service.run_all_validations(
+                    form_data, task_list, matching_node_id
+                )
+                
+                # Log validation results
+                for result in validation_results:
+                    print(f"🔍 Validation: {result.message}")
+                    if not result.is_valid and settings.ENABLE_WORKFLOW_ALERTS:
+                        # TODO: Implement alert system (email, Slack, etc.)
+                        print(f"🚨 ALERT: {result.message}")
+            
+            # Smart field detection theo node strategy
+            amount_result = self.amount_detector.get_amount_and_type_for_node(matching_node_id, form_data)
+            
+            if not amount_result['success']:
+                print(f"❌ Cannot determine amount/type: {amount_result.get('reason', 'Unknown error')}")
+                if 'error' in amount_result:
+                    print(f"    Error details: {amount_result['error']}")
+                return False
+            
+            qr_type = amount_result['qr_type']
+            amount_value = amount_result['amount']
+            field_used = amount_result['field_used']
+            
+            # Check duplicate TRƯỚC KHI tạo QR
+            if cache_service.is_qr_recently_generated(
+                instance_code, matching_node_id, qr_type, 
+                settings.QR_CACHE_DURATION_MINUTES
+            ):
+                print(f"⚠️ DUPLICATE DETECTED: QR {qr_type.upper()} for node {node_config['name']} already generated recently")
+                print(f"   → SKIPPING QR generation to prevent duplicate")
+                return True  # Return success vì không phải lỗi, chỉ là skip duplicate
+            
+            print(f"💰 QR Generation Details:")
+            print(f"   - Type: {qr_type}")
+            print(f"   - Amount: {amount_value:,} VND")
+            print(f"   - Field used: {field_used}")
+            print(f"   - Node strategy: {node_strategy}")
+            print(f"   - Trigger status: {matched_status}")
+            
+            # Validate amount
+            amount_validation = self.validate_amount_value(amount_value)
+            if not amount_validation['valid']:
+                print(f"❌ Invalid amount: {amount_validation['error']}")
+                return False
+                
+            amount_int = amount_validation['amount']
+            
+            # Extract thông tin ngân hàng
+            bank_id = self.field_extractor.extract_field_value(form_data, 'Ngân hàng')
+            account_no = self.field_extractor.extract_field_value(form_data, 'Số tài khoản ngân hàng')
+            account_name = self.field_extractor.extract_field_value(form_data, 'Tên người thụ hưởng')
+            
+            # Kiểm tra thông tin ngân hàng
+            if not all([bank_id, account_no, account_name]):
+                missing_fields = []
+                if not bank_id: missing_fields.append('Ngân hàng')
+                if not account_no: missing_fields.append('Số tài khoản ngân hàng')
+                if not account_name: missing_fields.append('Tên người thụ hưởng')
+                
+                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing_fields)}")
+                return False
+            
+            # Generate QR description theo type
+            description = vietqr_service.generate_qr_description(qr_type, instance_code)
+            
+            print(f"🏦 Tạo VietQR với thông tin:")
+            print(f"   - Ngân hàng: {bank_id}")
+            print(f"   - Số TK: {account_no}")
+            print(f"   - Tên: {account_name}")
+            print(f"   - Số tiền: {amount_int:,} VND")
+            print(f"   - Mô tả: {description}")
+            
+            # Tạo VietQR code trong bộ nhớ
+            qr_image_buffer = vietqr_service.create_qr_in_memory(
+                bank_id=bank_id,
+                account_no=account_no,
+                amount=amount_int,
+                description=description,
+                account_name=account_name
+            )
+            
+            if not qr_image_buffer:
+                print("❌ Không thể tạo VietQR code")
+                return False
+            
+            # Upload ảnh lên Lark Approval
+            filename = f"{instance_code}_{qr_type}_qr.png"
+            upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
+            
+            if not upload_result['success']:
+                print(f"❌ Upload thất bại: {upload_result['error']}")
+                return False
+            
+            # Đánh dấu đã tạo QR SAU KHI upload thành công
+            cache_service.mark_qr_as_generated(instance_code, matching_node_id, qr_type)
+            
+            # Enhanced comment với type và status info
+            comment_result = await lark_service.create_enhanced_comment_with_image(
+                instance_code=instance_code,
+                file_url=upload_result['file_url'],
+                file_code=upload_result['file_code'],
+                filename=filename,
+                qr_type=qr_type,
+                amount=amount_int,
+                node_name=node_config['name'],
+                access_token=access_token
+            )
+            
+            if comment_result['success']:
+                print(f"✅ Hoàn thành xử lý approval {instance_code}")
+                print(f"💰 Loại: {qr_type.upper()} | Số tiền: {amount_int:,} VND")
+                print(f"🏷️ Node: {node_config['name']} | Status: {matched_status}")
+                print(f"📋 Field: {field_used} | Strategy: {node_strategy}")
+                print(f"💬 Comment ID: {comment_result['comment_id']}")
+                return True
+            else:
+                print(f"❌ Tạo comment thất bại: {comment_result['error']}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Lỗi xử lý approval: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+# Global processor instance
+qr_processor = QRProcessor()
+
+============================================================
+
+============================================================
+FILE: app\services\validation_service.py
+============================================================
+"""
+Validation Service - Dành cho các validation rules mở rộng trong tương lai
+Ví dụ: kiểm tra tổng tạm ứng + thanh toán = thành tiền
+"""
+from typing import Dict, List, Any, Optional
+from app.models.approval import ValidationResult
+
+class ValidationService:
+    def __init__(self):
+        self.validation_rules = {
+            "amount_sum_validation": self.validate_amount_sum,
+            "workflow_status_validation": self.validate_workflow_status,
+            "field_consistency_validation": self.validate_field_consistency
+        }
+    
+    def validate_amount_sum(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+        """
+        Kiểm tra tổng tạm ứng + thanh toán có bằng thành tiền không
+        
+        Args:
+            form_data: Form data từ approval
+            **kwargs: Additional parameters
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        try:
+            from app.utils.field_extractor import FieldExtractor
+            extractor = FieldExtractor()
+            
+            # Extract các fields cần thiết
+            advance_amount = extractor.extract_field_value(form_data, "Số tiền tạm ứng")
+            payment_amount = extractor.extract_field_value(form_data, "Số tiền thanh toán")
+            total_amount = extractor.extract_field_value(form_data, "Thành tiền")
+            
+            # Convert sang float
+            advance = float(advance_amount) if advance_amount else 0
+            payment = float(payment_amount) if payment_amount else 0
+            total = float(total_amount) if total_amount else 0
+            
+            calculated_sum = advance + payment
+            
+            if abs(calculated_sum - total) < 0.01:  # Allow small floating point differences
+                return ValidationResult(
+                    is_valid=True,
+                    validation_type="amount_sum_validation",
+                    message=f"✅ Tổng số tiền hợp lệ: {advance:,} + {payment:,} = {total:,}",
+                    details={
+                        "advance_amount": advance,
+                        "payment_amount": payment,
+                        "total_amount": total,
+                        "calculated_sum": calculated_sum
+                    }
+                )
+            else:
+                return ValidationResult(
+                    is_valid=False,
+                    validation_type="amount_sum_validation",
+                    message=f"❌ Tổng số tiền không khớp: {advance:,} + {payment:,} = {calculated_sum:,} ≠ {total:,}",
+                    details={
+                        "advance_amount": advance,
+                        "payment_amount": payment,
+                        "total_amount": total,
+                        "calculated_sum": calculated_sum,
+                        "difference": abs(calculated_sum - total)
+                    }
+                )
+                
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="amount_sum_validation",
+                message=f"❌ Lỗi validation: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
+        """
+        Kiểm tra workflow status - cảnh báo nếu node đã duyệt mà bị thu hồi
+        
+        Args:
+            task_list: Task list từ approval
+            node_id: Node ID cần kiểm tra
+            **kwargs: Additional parameters
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        try:
+            # Tìm node trong task list
+            target_node = None
+            for task in task_list:
+                if task.get('node_id') == node_id:
+                    target_node = task
+                    break
+            
+            if not target_node:
+                return ValidationResult(
+                    is_valid=True,  # Không tìm thấy node không phải lỗi
+                    validation_type="workflow_status_validation",
+                    message=f"Node {node_id[:8]}... không tìm thấy trong task list",
+                    details={"node_id": node_id, "found": False}
+                )
+            
+            current_status = target_node.get('status', 'UNKNOWN')
+            
+            # Logic kiểm tra thu hồi
+            if current_status in ['REJECTED', 'CANCELED', 'WITHDRAWN']:
+                # Kiểm tra xem trước đó có được approve không
+                # (Logic này có thể phức tạp hơn tùy theo business rule)
+                return ValidationResult(
+                    is_valid=False,
+                    validation_type="workflow_status_validation",
+                    message=f"⚠️ CẢNH BÁO: Node {node_id[:8]}... có status {current_status} - có thể đã bị thu hồi",
+                    details={
+                        "node_id": node_id,
+                        "current_status": current_status,
+                        "alert_type": "potential_withdrawal"
+                    }
+                )
+            
+            return ValidationResult(
+                is_valid=True,
+                validation_type="workflow_status_validation",
+                message=f"✅ Node {node_id[:8]}... có status bình thường: {current_status}",
+                details={
+                    "node_id": node_id,
+                    "current_status": current_status
+                }
+            )
+            
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="workflow_status_validation",
+                message=f"❌ Lỗi kiểm tra workflow status: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def validate_field_consistency(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+        """
+        Kiểm tra tính nhất quán của các fields
+        Ví dụ: Ngày bắt đầu phải trước ngày kết thúc
+        """
+        try:
+            # Placeholder cho logic validation khác
+            return ValidationResult(
+                is_valid=True,
+                validation_type="field_consistency_validation",
+                message="✅ Field consistency check passed",
+                details={"checked": True}
+            )
+            
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                validation_type="field_consistency_validation",
+                message=f"❌ Lỗi kiểm tra field consistency: {str(e)}",
+                details={"error": str(e)}
+            )
+    
+    def run_validation(self, validation_type: str, **kwargs) -> ValidationResult:
+        """
+        Chạy một validation rule cụ thể
+        
+        Args:
+            validation_type: Loại validation cần chạy
+            **kwargs: Parameters cho validation
+            
+        Returns:
+            ValidationResult: Kết quả validation
+        """
+        if validation_type in self.validation_rules:
+            return self.validation_rules[validation_type](**kwargs)
+        else:
+            return ValidationResult(
+                is_valid=False,
+                validation_type=validation_type,
+                message=f"❌ Unknown validation type: {validation_type}",
+                details={"available_types": list(self.validation_rules.keys())}
+            )
+    
+    def run_all_validations(self, form_data: List[Dict], task_list: List[Dict], 
+                           node_id: str) -> List[ValidationResult]:
+        """
+        Chạy tất cả validations
+        
+        Args:
+            form_data: Form data từ approval
+            task_list: Task list từ approval
+            node_id: Node ID đang xử lý
+            
+        Returns:
+            List[ValidationResult]: Danh sách kết quả validation
+        """
+        results = []
+        
+        # Amount sum validation
+        results.append(self.run_validation(
+            "amount_sum_validation", 
+            form_data=form_data
+        ))
+        
+        # Workflow status validation
+        results.append(self.run_validation(
+            "workflow_status_validation", 
+            task_list=task_list, 
+            node_id=node_id
+        ))
+        
+        # Field consistency validation
+        results.append(self.run_validation(
+            "field_consistency_validation", 
+            form_data=form_data
+        ))
+        
+        return results
+
+# Global service instance
+validation_service = ValidationService()
+
+============================================================
+
+============================================================
+FILE: app\services\vietqr_service.py
+============================================================
+import requests
+from urllib.parse import quote
+from PIL import Image
+from io import BytesIO
+from app.config.settings import settings
+
+class VietQRService:
+    def __init__(self):
+        self.base_url = settings.VIETQR_BASE_URL
+    
+    def create_qr_in_memory(self, bank_id: str, account_no: str, amount: int, 
+                           description: str, account_name: str, 
+                           template: str = None) -> BytesIO:
+        """
+        Tạo QR code với số tiền và nội dung, trả về BytesIO object
+        
+        Args:
+            bank_id (str): Mã ngân hàng
+            account_no (str): Số tài khoản   
+            amount (int): Số tiền (VND)
+            description (str): Nội dung chuyển khoản
+            account_name (str): Tên tài khoản
+            template (str): Template (mặc định từ settings)
+        
+        Returns:
+            BytesIO: QR code image data hoặc None nếu lỗi
+        """
+        if template is None:
+            template = settings.VIETQR_TEMPLATE
+            
+        encoded_desc = quote(description)
+        encoded_name = quote(account_name)
+        
+        url = (f"{self.base_url}/{bank_id}-{account_no}-{template}.jpg?"
+               f"amount={amount}&addInfo={encoded_desc}&accountName={encoded_name}")
+        
+        print(f"VietQR URL: {url}")
+        
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            
+            # Mở ảnh từ response
+            image = Image.open(BytesIO(response.content))
+            
+            # Chuyển đổi sang RGB nếu cần
+            if image.mode in ('RGBA', 'LA', 'P'):
+                image = image.convert('RGB')
+            
+            # Lưu vào BytesIO
+            img_buffer = BytesIO()
+            image.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            
+            print(f"✅ Tạo VietQR code thành công trong bộ nhớ")
+            return img_buffer
+            
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Lỗi khi tải VietQR code: {e}")
+            return None
+        except Exception as e:
+            print(f"❌ Lỗi xử lý VietQR: {e}")
+            return None
+
+    def generate_qr_description(self, qr_type: str, instance_code: str) -> str:
+        """
+        Tạo description cho QR code dựa trên type
+        
+        Args:
+            qr_type (str): 'advance' hoặc 'payment'
+            instance_code (str): Instance code
+            
+        Returns:
+            str: QR description
+        """
+        if qr_type == 'advance':
+            return f"Tam ung don {instance_code}"
+        elif qr_type == 'payment':
+            return f"Thanh toan don {instance_code}"
+        else:
+            return f"Don {instance_code}"  # Fallback
+
+# Global service instance
+vietqr_service = VietQRService()
+
+============================================================
+
+============================================================
+FILE: app\utils\amount_detector.py
+============================================================
+from typing import Dict, List, Optional
+from app.config.node_config import get_node_config
+from app.utils.field_extractor import FieldExtractor
+
+class AmountDetector:
+    def __init__(self):
+        self.field_extractor = FieldExtractor()
+    
+    def detect_available_amount_fields(self, form_data: List[Dict], node_config: Dict = None) -> Dict:
+        """
+        Scan form data để tìm amount fields theo config của node
+        
+        Args:
+            form_data (list): Form data từ API response
+            node_config (dict): Node configuration (optional)
+            
+        Returns:
+            dict: Detection results với các fields và values
+        """
+        try:
+            # Sử dụng config từ node thay vì hardcode
+            if node_config:
+                advance_field = node_config.get('advance_field')
+                payment_field = node_config.get('payment_field')
+            else:
+                # Fallback cho backward compatibility
+                advance_field = "Số tiền tạm ứng"
+                payment_field = "Số tiền thanh toán"
+            
+            # Extract cả 2 fields (chỉ khi field name không phải None)
+            advance_value = self.field_extractor.extract_field_value(form_data, advance_field) if advance_field else None
+            payment_value = self.field_extractor.extract_field_value(form_data, payment_field) if payment_field else None
+            
+            # Debug: tìm tất cả fields có chứa "tiền" hoặc "amount" 
+            all_amount_fields = self.field_extractor.get_amount_fields(form_data)
+            
+            result = {
+                'advance_amount': advance_value,
+                'payment_amount': payment_value,
+                'advance_field_found': advance_value is not None,
+                'payment_field_found': payment_value is not None,
+                'all_amount_fields': all_amount_fields,
+                'fields_used': {
+                    'advance_field': advance_field,
+                    'payment_field': payment_field
+                }
+            }
+            
+            print(f"💰 Field detection results:")
+            if advance_field:
+                print(f"   - {advance_field}: {'✅ ' + str(advance_value) if advance_value else '❌ Not found'}")
+            else:
+                print(f"   - Advance field: ❌ Not configured")
+                
+            if payment_field:
+                print(f"   - {payment_field}: {'✅ ' + str(payment_value) if payment_value else '❌ Not found'}")
+            else:
+                print(f"   - Payment field: ❌ Not configured")
+                
+            print(f"   - All amount fields: {list(all_amount_fields.keys())}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error detecting amount fields: {e}")
+            return {
+                'advance_amount': None,
+                'payment_amount': None,
+                'advance_field_found': False,
+                'payment_field_found': False,
+                'all_amount_fields': {},
+                'fields_used': {'advance_field': None, 'payment_field': None},
+                'error': str(e)
+            }
+    
+    def determine_qr_type_by_fields(self, field_detection_result: Dict) -> Dict:
+        """
+        Quyết định QR type dựa trên fields có giá trị
+        
+        Args:
+            field_detection_result (dict): Kết quả từ detect_available_amount_fields()
+            
+        Returns:
+            dict: QR type decision result
+        """
+        try:
+            advance_found = field_detection_result.get('advance_field_found', False)
+            payment_found = field_detection_result.get('payment_field_found', False)
+            advance_amount = field_detection_result.get('advance_amount')
+            payment_amount = field_detection_result.get('payment_amount')
+
+            fields_used = field_detection_result.get('fields_used', {})
+            advance_field_name = fields_used.get('advance_field', 'Số tiền tạm ứng')
+            payment_field_name = fields_used.get('payment_field', 'Số tiền thanh toán')
+
+            print(f"🎯 Determining QR type: advance={advance_found}, payment={payment_found}")
+            
+            # Logic priority: advance trước, sau đó payment
+            if advance_found and advance_amount:
+                try:
+                    amount_value = float(advance_amount)
+                    if amount_value > 0:
+                        return {
+                            'qr_type': 'advance',
+                            'amount': amount_value,
+                            'field_used': advance_field_name,
+                            'reason': 'Found valid advance amount'
+                        }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid advance amount: {advance_amount}")
+            
+            if payment_found and payment_amount:
+                try:
+                    amount_value = float(payment_amount)
+                    if amount_value > 0:
+                        return {
+                            'qr_type': 'payment', 
+                            'amount': amount_value,
+                            'field_used': payment_field_name,
+                            'reason': 'Found valid payment amount'
+                        }
+                except (ValueError, TypeError):
+                    print(f"⚠️ Invalid payment amount: {payment_amount}")
+            
+            # Không tìm thấy field hợp lệ
+            return {
+                'qr_type': 'none',
+                'amount': None,
+                'field_used': None,
+                'reason': f'No valid amount found (advance_found={advance_found}, payment_found={payment_found})'
+            }
+            
+        except Exception as e:
+            print(f"❌ Error determining QR type: {e}")
+            return {
+                'qr_type': 'none',
+                'amount': None,
+                'field_used': None,
+                'reason': f'Error: {str(e)}'
+            }
+    
+    def get_amount_and_type_for_node(self, node_id: str, form_data: List[Dict]) -> Dict:
+        """
+        Lấy amount và QR type cho một node cụ thể dựa trên strategy của node đó
+        
+        Args:
+            node_id (str): Node ID
+            form_data (list): Form data từ API
+            
+        Returns:
+            dict: Processing result với success, qr_type, amount, etc.
+        """
+        try:
+            node_config = get_node_config(node_id)
+            if not node_config:
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'error': f'Node {node_id} not found in configuration'
+                }
+            
+            strategy = node_config['strategy']
+            node_name = node_config['name']
+            
+            print(f"🔍 Processing node: {node_name} (strategy: {strategy})")
+            
+            # Detect available fields
+            field_detection = self.detect_available_amount_fields(form_data, node_config)
+            
+            if strategy == "detect_both_fields":
+                # Dual detection: có thể là advance hoặc payment
+                qr_decision = self.determine_qr_type_by_fields(field_detection)
+                
+                return {
+                    'success': qr_decision['qr_type'] != 'none',
+                    'qr_type': qr_decision['qr_type'],
+                    'amount': qr_decision['amount'],
+                    'field_used': qr_decision['field_used'],
+                    'node_strategy': strategy,
+                    'reason': f"Dual detection result: {qr_decision['reason']}",
+                    'field_detection': field_detection
+                }
+                
+            elif strategy == "payment_field_only":
+                # Payment only: chỉ check payment field
+                payment_amount = field_detection.get('payment_amount')
+                payment_found = field_detection.get('payment_field_found', False)
+                payment_field_name = node_config.get('payment_field')
+
+                if payment_found and payment_amount:
+                    try:
+                        amount_value = float(payment_amount)
+                        if amount_value > 0:
+                            return {
+                                'success': True,
+                                'qr_type': 'payment',
+                                'amount': amount_value,
+                                'field_used': payment_field_name,
+                                'node_strategy': strategy,
+                                'reason': 'Payment-only strategy: found valid payment amount',
+                                'field_detection': field_detection
+                            }
+                    except (ValueError, TypeError):
+                        pass
+                
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'amount': None,
+                    'field_used': None,
+                    'node_strategy': strategy,
+                    'reason': f'Payment-only strategy: no valid payment amount (found={payment_found}, value={payment_amount})',
+                    'field_detection': field_detection
+                }
+            
+            else:
+                return {
+                    'success': False,
+                    'qr_type': 'none',
+                    'error': f'Unknown strategy: {strategy}'
+                }
+                
+        except Exception as e:
+            print(f"❌ Error processing node {node_id}: {e}")
+            return {
+                'success': False,
+                'qr_type': 'none',
+                'error': str(e)
+            }
+
+============================================================
+
+============================================================
+FILE: README.md
+============================================================
+# Lark Approval QR Generator
+
+Enhanced QR Generator cho Lark Approval workflows với kiến trúc modular, hỗ trợ validation và alerting system.
+
+## 🚀 Features
+
+- ✨ **Modular Architecture**: Dễ mở rộng và maintain
+- 🔄 **Multiple Node Strategies**: Hỗ trợ dual detection và payment-only
+- 🚫 **Duplicate Prevention**: Cache system ngăn tạo QR trùng lặp  
+- 📊 **Validation Service**: Kiểm tra tổng tiền, workflow status
+- ⚠️ **Alert System**: Cảnh báo khi có vi phạm workflow
+- 🏦 **VietQR Integration**: Tự động tạo mã QR thanh toán
+- 📱 **Smart Field Detection**: Tự động detect fields theo node config
+- ☁️ **Cloud Ready**: Sẵn sàng deploy lên Cloud Run
+
+## 📁 Project Structure
+
+
+============================================================
+
+============================================================
+FILE: requirements.txt
+============================================================
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+requests==2.31.0
+pandas==2.1.3
+Pillow==10.1.0
+python-multipart==0.0.6
+pydantic==2.5.0
+
+============================================================
+
+
+📊 THỐNG KÊ
+------------------------------
+Tổng số file: 23
+File code: 20
+Các loại file code:
+  .md: 1 file
+  .py: 17 file
+  .txt: 2 file
