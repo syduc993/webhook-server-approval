@@ -1,7 +1,7 @@
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-09-17 14:42:08
+Thời gian tạo: 2025-09-17 15:18:09
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -114,11 +114,11 @@ app\domains\notification\__init__.py (262 bytes)
 app\domains\notification\models\__init__.py (425 bytes)
 app\domains\notification\models\notification.py (1578 bytes)
 app\domains\notification\services\__init__.py (235 bytes)
-app\domains\notification\services\lark_webhook_service.py (12774 bytes)
+app\domains\notification\services\lark_webhook_service.py (12787 bytes)
 app\domains\notification\services\notification_coordinator.py (8726 bytes)
 app\domains\qr_generation\__init__.py (251 bytes)
 app\domains\qr_generation\handlers\__init__.py (82 bytes)
-app\domains\qr_generation\handlers\qr_event_handler.py (5149 bytes)
+app\domains\qr_generation\handlers\qr_event_handler.py (6616 bytes)
 app\domains\qr_generation\models\__init__.py (359 bytes)
 app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
@@ -128,16 +128,16 @@ app\domains\qr_generation\services\qr_processor.py (17853 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (8989 bytes)
+app\domains\validation\handlers\validation_event_handler.py (10470 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (13791 bytes)
+app\domains\validation\services\validation_service.py (13775 bytes)
 Dockerfile (726 bytes)
-Get detail code.ipynb (10314 bytes)
-lark_events.csv (157459 bytes)
+Get detail code.ipynb (10315 bytes)
+lark_events.csv (170959 bytes)
 project_complete_info.txt (0 bytes)
 README.md (7976 bytes)
 requirements.txt (136 bytes)
@@ -2358,7 +2358,7 @@ class LarkWebhookService:
             message_data = {
                 "msg_type": "text",
                 "content": {
-                    "text": f"""⚠️ CẢNH BÁO VALIDATION ERROR
+                    "text": f"""⚠️ CẢNH BÁO DỮ LIỆU KHÔNG HỢP LỆ
 📄 Request No.: {request.serial_number}
 ❌ Các lỗi phát hiện:
 {error_messages}
@@ -2765,7 +2765,6 @@ from typing import Dict
 from app.core.infrastructure.lark_service import lark_service
 from app.domains.qr_generation.services.qr_processor import qr_processor
 
-
 class QREventHandler:
     """
     Bộ xử lý sự kiện tạo mã QR cho hệ thống phê duyệt Lark.
@@ -2791,6 +2790,9 @@ class QREventHandler:
     async def handle_approval_event(self, event_data: Dict) -> Dict:
         """
         Xử lý sự kiện phê duyệt để tạo mã QR tự động.
+        
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
+        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
         
         Đây là method chính của handler, hoạt động hoàn toàn độc lập
         và không phụ thuộc vào các service khác. Method sẽ:
@@ -2818,14 +2820,32 @@ class QREventHandler:
             # Bước 1: Validate và trích xuất instance_code từ event data
             instance_code = event_data.get('instance_code')
             if not instance_code:
-                print(f"❌ Thiếu instance_code trong dữ liệu sự kiện")
+                print(f"❌ [QR Handler] Thiếu instance_code trong dữ liệu sự kiện")
                 return {
                     "success": False,
                     "message": "Không tìm thấy instance_code trong dữ liệu sự kiện", 
                     "service": self.name
                 }
             
-            print(f"🏦 Dịch vụ QR đang xử lý: {instance_code}")
+            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+
+            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            raw_data = event_data.get('raw_data', {})
+            instance_status = raw_data.get('event', {}).get('object', {}).get('status')
+            
+            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
+            if instance_status and instance_status in FINAL_STATUSES:
+                print(f"⏭️ [QR Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
+                return {
+                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "message": f"Bỏ qua xử lý do trạng thái đơn là {instance_status}",
+                    "instance_code": instance_code,
+                    "service": self.name
+                }
+            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
+            
+            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
             # Bước 2: Lấy access token để gọi Lark API
             print(f"🔑 Đang lấy access token từ Lark...")
@@ -2848,7 +2868,7 @@ class QREventHandler:
             
             # Bước 4: Tạo response với thông tin chi tiết
             if result:
-                print(f"✅ Hoàn thành xử lý QR cho {instance_code}")
+                print(f"✅ [QR Handler] Hoàn thành xử lý QR cho {instance_code}")
                 return {
                     "success": True,
                     "message": f"Xử lý QR hoàn thành thành công cho {instance_code}",
@@ -2856,7 +2876,7 @@ class QREventHandler:
                     "service": self.name
                 }
             else:
-                print(f"❌ Xử lý QR thất bại cho {instance_code}")
+                print(f"❌ [QR Handler] Xử lý QR thất bại cho {instance_code}")
                 return {
                     "success": False,
                     "message": f"Xử lý QR thất bại cho {instance_code}",
@@ -3899,7 +3919,6 @@ from app.core.infrastructure import lark_service
 from app.domains.notification.services import lark_webhook_service
 from app.core.infrastructure import cache_service
 
-
 class ValidationEventHandler:
     """
     Bộ xử lý sự kiện validation cho hệ thống phê duyệt.
@@ -3920,18 +3939,21 @@ class ValidationEventHandler:
         """Khởi tạo ValidationEventHandler với webhook service."""
         self.name = "Validation_Service"
         self.webhook_service = lark_webhook_service
-    
+
     async def handle_approval_event(self, event_data: Dict) -> Dict:
         """
         Xử lý sự kiện phê duyệt để thực hiện validation với cơ chế anti-spam nâng cao.
+
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
+        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
         
         Quy trình xử lý mới:
         1. Lấy dữ liệu instance từ Lark.
         2. Chạy tất cả các validation rules.
         3. Lọc ra các kết quả không hợp lệ (invalid).
         4. **[LOGIC MỚI]** Lặp qua từng lỗi không hợp lệ:
-           a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
-           b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
+            a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
+            b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
         5. Nếu có lỗi cần cảnh báo, gửi một webhook duy nhất chứa tất cả các lỗi mới.
         6. **[LOGIC MỚI]** Sau khi gửi, ghi cache cho từng loại lỗi đã được cảnh báo.
         """
@@ -3940,7 +3962,26 @@ class ValidationEventHandler:
             return {"success": False, "message": "Không tìm thấy instance_code", "service": self.name}
 
         try:
-            print(f"🔍 Dịch vụ Validation đang xử lý: {instance_code}")
+            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+
+            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            raw_data = event_data.get('raw_data', {})
+            instance_status = raw_data.get('event', {}).get('object', {}).get('status')
+            
+            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
+            if instance_status and instance_status in FINAL_STATUSES:
+                print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
+                return {
+                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "message": f"Bỏ qua validation do trạng thái đơn là {instance_status}",
+                    "instance_code": instance_code,
+                    "webhook_sent": False, # Không có webhook nào được gửi
+                    "service": self.name
+                }
+            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
+
+            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
             # Bước 1 & 2: Lấy dữ liệu từ Lark
             access_token = await lark_service.get_access_token()
@@ -3962,7 +4003,7 @@ class ValidationEventHandler:
             invalid_results = [r for r in validation_results if not r.is_valid]
             
             if not invalid_results:
-                print("✅ Tất cả validation đều thành công.")
+                print("✅ [Validation Handler] Tất cả validation đều thành công.")
                 return {
                     "success": True, "message": "Tất cả validation đều thành công",
                     "webhook_sent": False, "webhook_skipped_count": 0,
@@ -3974,12 +4015,10 @@ class ValidationEventHandler:
             alerts_to_send = []
             skipped_count = 0
             
-            print(f"⚠️ Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
+            print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                # Lấy validation_type cụ thể, ví dụ: "advance_amount_mismatch"
                 specific_validation_type = result.validation_type.value
                 
-                # Kiểm tra cache với key riêng cho từng loại lỗi
                 if cache_service.is_validation_alert_recently_sent(
                     instance_code, specific_validation_type, cache_duration_minutes=10
                 ):
@@ -3993,21 +4032,21 @@ class ValidationEventHandler:
             webhook_sent = False
             if alerts_to_send:
                 error_messages = [r.message for r in alerts_to_send]
-                print(f"📨 Đang gửi {len(error_messages)} cảnh báo mới qua webhook...")
+                print(f"📨 [Validation Handler] Đang gửi {len(error_messages)} cảnh báo mới qua webhook...")
                 
                 webhook_sent = await self._send_validation_alert(instance_code, error_messages, serial_number)
                 
                 # Bước 6: Nếu gửi thành công, ghi cache cho từng lỗi đã gửi
                 if webhook_sent:
-                    print("✅ Gửi webhook thành công. Đang cập nhật cache...")
+                    print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
                         specific_validation_type = result.validation_type.value
                         cache_service.mark_validation_alert_as_sent(instance_code, specific_validation_type)
                         print(f"  🔒 Đã cache cho: {specific_validation_type}")
                 else:
-                    print("❌ Gửi webhook thất bại.")
+                    print("❌ [Validation Handler] Gửi webhook thất bại.")
             else:
-                print("✅ Không có cảnh báo mới nào cần gửi. Tất cả đã được cache.")
+                print("✅ [Validation Handler] Không có cảnh báo mới nào cần gửi. Tất cả đã được cache.")
 
             return {
                 "success": True,
@@ -4021,7 +4060,7 @@ class ValidationEventHandler:
             
         except Exception as e:
             # Xử lý lỗi hệ thống (giữ nguyên logic cũ)
-            print(f"❌ Lỗi nghiêm trọng trong Validation Service: {str(e)}")
+            print(f"❌ [Validation Handler] Lỗi nghiêm trọng trong Validation Service: {str(e)}")
             # ... (phần xử lý lỗi này có thể giữ nguyên hoặc cải tiến sau)
             return {
                 "success": False,
@@ -4454,7 +4493,7 @@ class ValidationService:
                 case_description = f"{FFN.ADVANCE_AMOUNT} ({advance_float:,}) + {FFN.REMAINING_PAYMENT_AMOUNT} ({amount_due_float:,})"
                 return ValidationResult.create_invalid(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tổng tiền: Actual ({total_actual_float:,}) ≠ Expected ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
+                    f"❌ Lỗi tổng tiền: ({total_actual_float:,}) ≠ ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
                     {"total_expected": total_expected, "total_actual": total_actual_float}
                 )
         except (ValueError, TypeError) as e:
@@ -4555,7 +4594,7 @@ FILE: project_complete_info.txt
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-09-17 14:42:08
+Thời gian tạo: 2025-09-17 15:18:09
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -4668,11 +4707,11 @@ app\domains\notification\__init__.py (262 bytes)
 app\domains\notification\models\__init__.py (425 bytes)
 app\domains\notification\models\notification.py (1578 bytes)
 app\domains\notification\services\__init__.py (235 bytes)
-app\domains\notification\services\lark_webhook_service.py (12774 bytes)
+app\domains\notification\services\lark_webhook_service.py (12787 bytes)
 app\domains\notification\services\notification_coordinator.py (8726 bytes)
 app\domains\qr_generation\__init__.py (251 bytes)
 app\domains\qr_generation\handlers\__init__.py (82 bytes)
-app\domains\qr_generation\handlers\qr_event_handler.py (5149 bytes)
+app\domains\qr_generation\handlers\qr_event_handler.py (6616 bytes)
 app\domains\qr_generation\models\__init__.py (359 bytes)
 app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
@@ -4682,16 +4721,16 @@ app\domains\qr_generation\services\qr_processor.py (17853 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (8989 bytes)
+app\domains\validation\handlers\validation_event_handler.py (10470 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (13791 bytes)
+app\domains\validation\services\validation_service.py (13775 bytes)
 Dockerfile (726 bytes)
-Get detail code.ipynb (10314 bytes)
-lark_events.csv (157459 bytes)
+Get detail code.ipynb (10315 bytes)
+lark_events.csv (170959 bytes)
 project_complete_info.txt (0 bytes)
 README.md (7976 bytes)
 requirements.txt (136 bytes)
@@ -6912,7 +6951,7 @@ class LarkWebhookService:
             message_data = {
                 "msg_type": "text",
                 "content": {
-                    "text": f"""⚠️ CẢNH BÁO VALIDATION ERROR
+                    "text": f"""⚠️ CẢNH BÁO DỮ LIỆU KHÔNG HỢP LỆ
 📄 Request No.: {request.serial_number}
 ❌ Các lỗi phát hiện:
 {error_messages}
@@ -7319,7 +7358,6 @@ from typing import Dict
 from app.core.infrastructure.lark_service import lark_service
 from app.domains.qr_generation.services.qr_processor import qr_processor
 
-
 class QREventHandler:
     """
     Bộ xử lý sự kiện tạo mã QR cho hệ thống phê duyệt Lark.
@@ -7345,6 +7383,9 @@ class QREventHandler:
     async def handle_approval_event(self, event_data: Dict) -> Dict:
         """
         Xử lý sự kiện phê duyệt để tạo mã QR tự động.
+        
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
+        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
         
         Đây là method chính của handler, hoạt động hoàn toàn độc lập
         và không phụ thuộc vào các service khác. Method sẽ:
@@ -7372,14 +7413,32 @@ class QREventHandler:
             # Bước 1: Validate và trích xuất instance_code từ event data
             instance_code = event_data.get('instance_code')
             if not instance_code:
-                print(f"❌ Thiếu instance_code trong dữ liệu sự kiện")
+                print(f"❌ [QR Handler] Thiếu instance_code trong dữ liệu sự kiện")
                 return {
                     "success": False,
                     "message": "Không tìm thấy instance_code trong dữ liệu sự kiện", 
                     "service": self.name
                 }
             
-            print(f"🏦 Dịch vụ QR đang xử lý: {instance_code}")
+            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+
+            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            raw_data = event_data.get('raw_data', {})
+            instance_status = raw_data.get('event', {}).get('object', {}).get('status')
+            
+            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
+            if instance_status and instance_status in FINAL_STATUSES:
+                print(f"⏭️ [QR Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
+                return {
+                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "message": f"Bỏ qua xử lý do trạng thái đơn là {instance_status}",
+                    "instance_code": instance_code,
+                    "service": self.name
+                }
+            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
+            
+            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
             # Bước 2: Lấy access token để gọi Lark API
             print(f"🔑 Đang lấy access token từ Lark...")
@@ -7402,7 +7461,7 @@ class QREventHandler:
             
             # Bước 4: Tạo response với thông tin chi tiết
             if result:
-                print(f"✅ Hoàn thành xử lý QR cho {instance_code}")
+                print(f"✅ [QR Handler] Hoàn thành xử lý QR cho {instance_code}")
                 return {
                     "success": True,
                     "message": f"Xử lý QR hoàn thành thành công cho {instance_code}",
@@ -7410,7 +7469,7 @@ class QREventHandler:
                     "service": self.name
                 }
             else:
-                print(f"❌ Xử lý QR thất bại cho {instance_code}")
+                print(f"❌ [QR Handler] Xử lý QR thất bại cho {instance_code}")
                 return {
                     "success": False,
                     "message": f"Xử lý QR thất bại cho {instance_code}",
@@ -8453,7 +8512,6 @@ from app.core.infrastructure import lark_service
 from app.domains.notification.services import lark_webhook_service
 from app.core.infrastructure import cache_service
 
-
 class ValidationEventHandler:
     """
     Bộ xử lý sự kiện validation cho hệ thống phê duyệt.
@@ -8474,18 +8532,21 @@ class ValidationEventHandler:
         """Khởi tạo ValidationEventHandler với webhook service."""
         self.name = "Validation_Service"
         self.webhook_service = lark_webhook_service
-    
+
     async def handle_approval_event(self, event_data: Dict) -> Dict:
         """
         Xử lý sự kiện phê duyệt để thực hiện validation với cơ chế anti-spam nâng cao.
+
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
+        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
         
         Quy trình xử lý mới:
         1. Lấy dữ liệu instance từ Lark.
         2. Chạy tất cả các validation rules.
         3. Lọc ra các kết quả không hợp lệ (invalid).
         4. **[LOGIC MỚI]** Lặp qua từng lỗi không hợp lệ:
-           a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
-           b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
+            a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
+            b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
         5. Nếu có lỗi cần cảnh báo, gửi một webhook duy nhất chứa tất cả các lỗi mới.
         6. **[LOGIC MỚI]** Sau khi gửi, ghi cache cho từng loại lỗi đã được cảnh báo.
         """
@@ -8494,7 +8555,26 @@ class ValidationEventHandler:
             return {"success": False, "message": "Không tìm thấy instance_code", "service": self.name}
 
         try:
-            print(f"🔍 Dịch vụ Validation đang xử lý: {instance_code}")
+            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+
+            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            raw_data = event_data.get('raw_data', {})
+            instance_status = raw_data.get('event', {}).get('object', {}).get('status')
+            
+            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
+            if instance_status and instance_status in FINAL_STATUSES:
+                print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
+                return {
+                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "message": f"Bỏ qua validation do trạng thái đơn là {instance_status}",
+                    "instance_code": instance_code,
+                    "webhook_sent": False, # Không có webhook nào được gửi
+                    "service": self.name
+                }
+            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
+
+            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
             # Bước 1 & 2: Lấy dữ liệu từ Lark
             access_token = await lark_service.get_access_token()
@@ -8516,7 +8596,7 @@ class ValidationEventHandler:
             invalid_results = [r for r in validation_results if not r.is_valid]
             
             if not invalid_results:
-                print("✅ Tất cả validation đều thành công.")
+                print("✅ [Validation Handler] Tất cả validation đều thành công.")
                 return {
                     "success": True, "message": "Tất cả validation đều thành công",
                     "webhook_sent": False, "webhook_skipped_count": 0,
@@ -8528,12 +8608,10 @@ class ValidationEventHandler:
             alerts_to_send = []
             skipped_count = 0
             
-            print(f"⚠️ Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
+            print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                # Lấy validation_type cụ thể, ví dụ: "advance_amount_mismatch"
                 specific_validation_type = result.validation_type.value
                 
-                # Kiểm tra cache với key riêng cho từng loại lỗi
                 if cache_service.is_validation_alert_recently_sent(
                     instance_code, specific_validation_type, cache_duration_minutes=10
                 ):
@@ -8547,21 +8625,21 @@ class ValidationEventHandler:
             webhook_sent = False
             if alerts_to_send:
                 error_messages = [r.message for r in alerts_to_send]
-                print(f"📨 Đang gửi {len(error_messages)} cảnh báo mới qua webhook...")
+                print(f"📨 [Validation Handler] Đang gửi {len(error_messages)} cảnh báo mới qua webhook...")
                 
                 webhook_sent = await self._send_validation_alert(instance_code, error_messages, serial_number)
                 
                 # Bước 6: Nếu gửi thành công, ghi cache cho từng lỗi đã gửi
                 if webhook_sent:
-                    print("✅ Gửi webhook thành công. Đang cập nhật cache...")
+                    print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
                         specific_validation_type = result.validation_type.value
                         cache_service.mark_validation_alert_as_sent(instance_code, specific_validation_type)
                         print(f"  🔒 Đã cache cho: {specific_validation_type}")
                 else:
-                    print("❌ Gửi webhook thất bại.")
+                    print("❌ [Validation Handler] Gửi webhook thất bại.")
             else:
-                print("✅ Không có cảnh báo mới nào cần gửi. Tất cả đã được cache.")
+                print("✅ [Validation Handler] Không có cảnh báo mới nào cần gửi. Tất cả đã được cache.")
 
             return {
                 "success": True,
@@ -8575,7 +8653,7 @@ class ValidationEventHandler:
             
         except Exception as e:
             # Xử lý lỗi hệ thống (giữ nguyên logic cũ)
-            print(f"❌ Lỗi nghiêm trọng trong Validation Service: {str(e)}")
+            print(f"❌ [Validation Handler] Lỗi nghiêm trọng trong Validation Service: {str(e)}")
             # ... (phần xử lý lỗi này có thể giữ nguyên hoặc cải tiến sau)
             return {
                 "success": False,
@@ -9008,7 +9086,7 @@ class ValidationService:
                 case_description = f"{FFN.ADVANCE_AMOUNT} ({advance_float:,}) + {FFN.REMAINING_PAYMENT_AMOUNT} ({amount_due_float:,})"
                 return ValidationResult.create_invalid(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tổng tiền: Actual ({total_actual_float:,}) ≠ Expected ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
+                    f"❌ Lỗi tổng tiền: ({total_actual_float:,}) ≠ ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
                     {"total_expected": total_expected, "total_actual": total_actual_float}
                 )
         except (ValueError, TypeError) as e:
