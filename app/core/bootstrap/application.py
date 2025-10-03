@@ -146,8 +146,8 @@ class ApplicationBootstrap:
             print(f"   • Event bus: {handler_count} handlers đã đăng ký cho approval events")
             
             # Kiểm tra node configuration
-            from app.core.config.node_config import NODE_CONFIG
-            print(f"   • Cấu hình node: {len(NODE_CONFIG)} nodes đã được cấu hình")
+            from app.core.config.node_config import APPROVAL_WORKFLOWS
+            print(f"   • Cấu hình workflow: {len(APPROVAL_WORKFLOWS)} quy trình đã được cấu hình")
             
             # Kiểm tra các environment variables bắt buộc
             required_vars = ["LARK_APP_ID", "LARK_APP_SECRET"]

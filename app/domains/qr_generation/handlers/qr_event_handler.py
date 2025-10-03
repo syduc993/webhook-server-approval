@@ -11,7 +11,7 @@ class QREventHandler:
     
     Quy trình xử lý:
     1. Nhận sự kiện phê duyệt từ hệ thống
-    2. Trích xuất instance_code từ event data
+    2. Trích xuất instance_code và approval_code từ event data
     3. Lấy access token để gọi Lark API
     4. Gửi đến QRProcessor để xử lý tạo QR
     5. Trả về kết quả xử lý
@@ -28,34 +28,21 @@ class QREventHandler:
         """
         Xử lý sự kiện phê duyệt để tạo mã QR tự động.
         
-        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
-        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
-        
-        Đây là method chính của handler, hoạt động hoàn toàn độc lập
-        và không phụ thuộc vào các service khác. Method sẽ:
-        
-        1. Validate dữ liệu đầu vào (instance_code)
-        2. Lấy access token từ Lark service
-        3. Gọi QRProcessor để xử lý business logic
-        4. Trả về kết quả chi tiết cho monitoring
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn và nhận diện quy trình
+        qua approval_code.
         
         Args:
             event_data (Dict): Dữ liệu sự kiện chứa thông tin phê duyệt.
-                             Bắt buộc phải có 'instance_code'
+                             Bắt buộc phải có 'instance_code' và 'approval_code'.
         
         Returns:
-            Dict: Kết quả xử lý bao gồm:
-                - success (bool): Trạng thái xử lý thành công
-                - message (str): Thông báo chi tiết kết quả
-                - instance_code (str): Mã instance đã xử lý (nếu có)
-                - service (str): Tên service thực hiện
-        
-        Raises:
-            Exception: Các lỗi không xác định sẽ được bắt và trả về trong response
+            Dict: Kết quả xử lý chi tiết.
         """
         try:
-            # Bước 1: Validate và trích xuất instance_code từ event data
+            # [THAY ĐỔI] Trích xuất cả instance_code và approval_code từ event
             instance_code = event_data.get('instance_code')
+            approval_code = event_data.get('approval_code')
+
             if not instance_code:
                 print(f"❌ [QR Handler] Thiếu instance_code trong dữ liệu sự kiện")
                 return {
@@ -64,27 +51,34 @@ class QREventHandler:
                     "service": self.name
                 }
             
-            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
-            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+            # [THÊM MỚI] Kiểm tra sự tồn tại của approval_code
+            if not approval_code:
+                print(f"❌ [QR Handler] Thiếu approval_code trong dữ liệu sự kiện cho instance: {instance_code}")
+                return {
+                    "success": False,
+                    "message": "Không tìm thấy approval_code trong dữ liệu sự kiện",
+                    "instance_code": instance_code,
+                    "service": self.name
+                }
 
-            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            # Logic kiểm tra trạng thái đơn (giữ nguyên)
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
             
-            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [QR Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
                 return {
-                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "success": True,
                     "message": f"Bỏ qua xử lý do trạng thái đơn là {instance_status}",
                     "instance_code": instance_code,
                     "service": self.name
                 }
-            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
             
-            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
+            # [THAY ĐỔI] Cập nhật log để hiển thị cả approval_code
+            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Workflow: {approval_code})")
             
-            # Bước 2: Lấy access token để gọi Lark API
+            # Lấy access token (giữ nguyên)
             print(f"🔑 Đang lấy access token từ Lark...")
             access_token = await lark_service.get_access_token()
             if not access_token:
@@ -97,13 +91,13 @@ class QREventHandler:
             
             print(f"✅ Đã lấy access token thành công")
             
-            # Bước 3: Gửi đến QRProcessor để xử lý business logic chính
+            # [THAY ĐỔI] Truyền approval_code vào service xử lý logic nghiệp vụ
             print(f"⚙️ Bắt đầu xử lý tạo QR cho {instance_code}...")
             result = await qr_processor.process_approval_with_qr_comment(
-                instance_code, access_token
+                instance_code, approval_code, access_token
             )
             
-            # Bước 4: Tạo response với thông tin chi tiết
+            # Xử lý kết quả trả về (giữ nguyên)
             if result:
                 print(f"✅ [QR Handler] Hoàn thành xử lý QR cho {instance_code}")
                 return {
@@ -122,7 +116,7 @@ class QREventHandler:
                 }
             
         except Exception as e:
-            # Bắt tất cả exception không xác định để tránh crash service
+            # Xử lý lỗi (giữ nguyên)
             print(f"❌ Lỗi không xác định trong QR Service: {str(e)}")
             import traceback
             print(f"📋 Chi tiết lỗi:\n{traceback.format_exc()}")

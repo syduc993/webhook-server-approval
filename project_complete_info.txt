@@ -1,7 +1,7 @@
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-10-03 14:17:39
+Thời gian tạo: 2025-10-03 15:54:38
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -90,10 +90,10 @@ Thư mục gốc: d:\Atino\extension\webhook-server-approval
 --------------------------------------------------
 .gitignore (594 bytes)
 app\core\__init__.py (376 bytes)
-app\core\bootstrap\application.py (8435 bytes)
-app\core\config\__init__.py (271 bytes)
+app\core\bootstrap\application.py (8458 bytes)
+app\core\config\__init__.py (401 bytes)
 app\core\config\field_constants.py (1232 bytes)
-app\core\config\node_config.py (5382 bytes)
+app\core\config\node_config.py (6127 bytes)
 app\core\config\settings.py (3520 bytes)
 app\core\events\event_registry.py (2702 bytes)
 app\core\infrastructure\__init__.py (176 bytes)
@@ -104,7 +104,7 @@ app\core\models\event.py (899 bytes)
 app\core\models\response.py (1015 bytes)
 app\core\models\shared.py (553 bytes)
 app\core\routers\monitoring.py (1619 bytes)
-app\core\routers\webhook.py (2919 bytes)
+app\core\routers\webhook.py (3837 bytes)
 app\core\utils\__init__.py (332 bytes)
 app\core\utils\amount_detector.py (10162 bytes)
 app\core\utils\field_extractor.py (12805 bytes)
@@ -118,26 +118,26 @@ app\domains\notification\services\lark_webhook_service.py (12787 bytes)
 app\domains\notification\services\notification_coordinator.py (8726 bytes)
 app\domains\qr_generation\__init__.py (251 bytes)
 app\domains\qr_generation\handlers\__init__.py (82 bytes)
-app\domains\qr_generation\handlers\qr_event_handler.py (6616 bytes)
+app\domains\qr_generation\handlers\qr_event_handler.py (6006 bytes)
 app\domains\qr_generation\models\__init__.py (359 bytes)
 app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
 app\domains\qr_generation\services\__init__.py (214 bytes)
 app\domains\qr_generation\services\amount_detector.py (15034 bytes)
-app\domains\qr_generation\services\qr_processor.py (17581 bytes)
+app\domains\qr_generation\services\qr_processor.py (18979 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (10972 bytes)
+app\domains\validation\handlers\validation_event_handler.py (9192 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (15465 bytes)
+app\domains\validation\services\validation_service.py (9746 bytes)
 Dockerfile (1896 bytes)
 Get detail code.ipynb (10463 bytes)
-lark_events.csv (111947 bytes)
+lark_events.csv (112696 bytes)
 project_complete_info.txt (0 bytes)
 README.md (7974 bytes)
 requirements.txt (136 bytes)
@@ -321,8 +321,8 @@ class ApplicationBootstrap:
             print(f"   • Event bus: {handler_count} handlers đã đăng ký cho approval events")
             
             # Kiểm tra node configuration
-            from app.core.config.node_config import NODE_CONFIG
-            print(f"   • Cấu hình node: {len(NODE_CONFIG)} nodes đã được cấu hình")
+            from app.core.config.node_config import APPROVAL_WORKFLOWS
+            print(f"   • Cấu hình workflow: {len(APPROVAL_WORKFLOWS)} quy trình đã được cấu hình")
             
             # Kiểm tra các environment variables bắt buộc
             required_vars = ["LARK_APP_ID", "LARK_APP_SECRET"]
@@ -376,17 +376,24 @@ app_bootstrap = ApplicationBootstrap()
 FILE: app\core\config\__init__.py
 ============================================================
 from .settings import settings
-from .node_config import NODE_CONFIG, get_node_config, get_configured_node_ids
+from .node_config import (
+    APPROVAL_WORKFLOWS,
+    get_workflow_config,
+    get_field_mapping,
+    get_qr_trigger_config,
+    get_node_config
+)
 from .field_constants import FFN
 
 __all__ = [
     "settings", 
-    "NODE_CONFIG", 
-    "get_node_config", 
-    "get_configured_node_ids",
+    "APPROVAL_WORKFLOWS",
+    "get_workflow_config",
+    "get_field_mapping",
+    "get_qr_trigger_config",
+    "get_node_config",
     "FFN"
 ]
-
 ============================================================
 
 ============================================================
@@ -426,121 +433,148 @@ FILE: app\core\config\node_config.py
 ============================================================
 from .field_constants import FFN
 
-# Cấu hình chi tiết cho từng node trong approval workflow
-NODE_CONFIG = {
-    # Node trưởng phòng duyệt - Có thể detect cả advance và payment (Không bắt được node submit, node này luôn là node tiếp theo)
-    "30e5338b60587c64c7cef5f6a7211ccb": {
-        "name": "truong_phong_duyet",
-        "type": "dual_detection",                   # Loại node hỗ trợ cả advance và payment
-        "advance_field": FFN.ADVANCE_AMOUNT,        # Tên field chứa số tiền tạm ứng
-        "payment_field": FFN.PAYMENT_AMOUNT,        # Tên field chứa số tiền thanh toán
-        "strategy": "detect_both_fields",           # Strategy tự động detect loại QR dựa trên fields
-        "required_status": "PENDING",               # Status cần thiết để trigger QR generation
-        "description": "Trưởng phòng duyệt - Auto detect advance/payment"
-    },
-    
-    # Node thanh toán
-    "f23535375a26847ef71c1cbf0755f246": {
-        "name": "thanh_toan_sau_tam_ung", 
-        "type": "payment_only",                          # Loại node chỉ xử lý payment
-        "advance_field": None,                           # Không có field advance
-        "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,   # Field chứa số tiền cần thanh toán
-        "strategy": "payment_field_only",                # Strategy chỉ xử lý payment field
-        "required_status": "APPROVED",                   # Node này cần status APPROVED
-        
-        # Điều kiện bổ sung để trigger QR generation
-        "additional_conditions": [
-            {
-                "node_id": "ef83b231885a1a77658f32808a199764",  # Node tiếp theo
-                "required_status": "PENDING",                   # Node tiếp theo phải PENDING
-                "description": "Node tiếp theo phải PENDING"    # Mô tả điều kiện
+APPROVAL_WORKFLOWS = {
+    "FCF7110C-FA4B-42AA-93D2-209910F8A0B0": {
+        "name": "Quy trình thanh toán tổng hợp mới",
+        "nodes": {
+            "30e5338b60587c64c7cef5f6a7211ccb": {
+                "name": "truong_phong_duyet",
+                "type": "dual_detection",
+                "advance_field": FFN.ADVANCE_AMOUNT,
+                "payment_field": FFN.PAYMENT_AMOUNT,
+                "strategy": "detect_both_fields",
+                "required_status": "PENDING",
+                "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+            },
+            "f23535375a26847ef71c1cbf0755f246": {
+                "name": "thanh_toan_sau_tam_ung",
+                "type": "payment_only",
+                "advance_field": None,
+                "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,
+                "strategy": "payment_field_only",
+                "required_status": "APPROVED",
+                "additional_conditions": [
+                    {
+                        "node_id": "ef83b231885a1a77658f32808a199764",
+                        "required_status": "PENDING",
+                        "description": "Node tiếp theo phải PENDING"
+                    }
+                ],
+                "description": "Thanh toán sau tạm ứng - Payment only"
             }
-        ],
-        "description": "Thanh toán sau tạm ứng - Payment only (trigger on APPROVED + next node PENDING)"
+        },
+        "field_mappings": {
+            "bank_name": FFN.BANK_NAME,
+            "account_number": FFN.BANK_ACCOUNT_NUMBER,
+            "beneficiary_name": FFN.BENEFICIARY_NAME,
+            "accounting_advance_info": FFN.ACCOUNTING_ADVANCE_INFO,
+            "accounting_payment_info": FFN.ACCOUNTING_PAYMENT_INFO,
+            "expenditure_amount": FFN.EXPENDITURE_AMOUNT
+        },
+        "qr_trigger_nodes": [
+            {
+                "node_name_contains": "Thủ quỹ chi tiền tạm ứng",
+                "status": "PENDING",
+                "yes_no_field_template": "Thanh toán tạm ứng lần {i}: Y/N",
+                "amount_field_template": "Số tiền tạm ứng lần {i}:",
+                "qr_type": "advance"
+            }
+        ]
+    },
+    "FCF7110C-FA4B-42AA-93D2-209910F8A0B0": {
+        "name": "Quy trình thanh toán tổng hợp mới",
+        "nodes": {
+            "30e5338b60587c64c7cef5f6a7211ccb": {
+                "name": "truong_phong_duyet",
+                "type": "dual_detection",
+                "advance_field": FFN.ADVANCE_AMOUNT,
+                "payment_field": FFN.PAYMENT_AMOUNT,
+                "strategy": "detect_both_fields",
+                "required_status": "PENDING",
+                "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+            },
+            "f23535375a26847ef71c1cbf0755f246": {
+                "name": "thanh_toan_sau_tam_ung",
+                "type": "payment_only",
+                "advance_field": None,
+                "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,
+                "strategy": "payment_field_only",
+                "required_status": "APPROVED",
+                "additional_conditions": [
+                    {
+                        "node_id": "ef83b231885a1a77658f32808a199764",
+                        "required_status": "PENDING",
+                        "description": "Node tiếp theo phải PENDING"
+                    }
+                ],
+                "description": "Thanh toán sau tạm ứng - Payment only"
+            }
+        },
+        "field_mappings": {
+            "bank_name": FFN.BANK_NAME,
+            "account_number": FFN.BANK_ACCOUNT_NUMBER,
+            "beneficiary_name": FFN.BENEFICIARY_NAME,
+            "accounting_advance_info": FFN.ACCOUNTING_ADVANCE_INFO,
+            "accounting_payment_info": FFN.ACCOUNTING_PAYMENT_INFO,
+            "expenditure_amount": FFN.EXPENDITURE_AMOUNT
+        },
+        "qr_trigger_nodes": [
+            {
+                "node_name_contains": "Thủ quỹ chi tiền tạm ứng",
+                "status": "PENDING",
+                "yes_no_field_template": "Thanh toán tạm ứng lần {i}: Y/N",
+                "amount_field_template": "Số tiền tạm ứng lần {i}:",
+                "qr_type": "advance"
+            }
+        ]
     }
 }
 
 
-def get_node_config(node_id: str) -> dict:
+def get_workflow_config(approval_code: str) -> dict:
     """
-    Lấy configuration chi tiết cho một node_id cụ thể.
-    
-    Args:
-        node_id (str): Node ID cần lấy configuration
-        
-    Returns:
-        dict: Dictionary chứa cấu hình node bao gồm:
-            - name: Tên node
-            - type: Loại node (dual_detection, payment_only, etc.)
-            - advance_field: Tên field chứa số tiền tạm ứng
-            - payment_field: Tên field chứa số tiền thanh toán
-            - strategy: Chiến lược xử lý (detect_both_fields, payment_field_only, etc.)
-            - required_status: Status cần thiết để trigger
-            - additional_conditions: Các điều kiện bổ sung (optional)
-            - description: Mô tả node
-        Trả về None nếu không tìm thấy node_id
+    Lấy toàn bộ cấu hình cho một quy trình phê duyệt dựa trên approval_code.
     """
-    return NODE_CONFIG.get(node_id)
+    return APPROVAL_WORKFLOWS.get(approval_code)
 
-
-def get_node_strategy(node_id: str) -> str:
+def get_node_config(approval_code: str, node_id: str) -> dict:
     """
-    Lấy strategy xử lý của một node cụ thể.
-    
-    Args:
-        node_id (str): Node ID cần lấy strategy
-        
-    Returns:
-        str: Tên strategy của node như:
-            - "detect_both_fields": Tự động detect advance/payment
-            - "payment_field_only": Chỉ xử lý payment
-            - "unknown": Nếu không tìm thấy node hoặc strategy
+    Lấy cấu hình chi tiết cho một node_id cụ thể trong một quy trình.
     """
-    config = get_node_config(node_id)
-    return config.get("strategy", "unknown") if config else "unknown"
+    workflow = get_workflow_config(approval_code)
+    if workflow and 'nodes' in workflow:
+        return workflow['nodes'].get(node_id)
+    return None
 
-
-def print_node_config_summary():
+def get_field_mapping(approval_code: str, field_key: str) -> str:
     """
-    In ra tóm tắt chi tiết của NODE_CONFIG bao gồm additional conditions.
-    
-    Function này hiển thị thông tin tổng quan về tất cả nodes được cấu hình,
-    bao gồm strategy, fields, required status và các điều kiện bổ sung.
+    Lấy tên trường thực tế từ key logic cho một quy trình.
+    Ví dụ: get_field_mapping(code, "bank_name") -> "Ngân hàng"
     """
-    print("📋 Tóm tắt cấu hình NODE_CONFIG:")
-    
-    # Duyệt qua từng node trong configuration
-    for node_id, config in NODE_CONFIG.items():
-        required_status = config.get('required_status', 'PENDING')
-        additional_conditions = config.get('additional_conditions', [])
-        
-        # Hiển thị thông tin cơ bản của node
-        print(f"   • {node_id[:8]}... - {config['name']} ({config['strategy']})")
-        print(f"     Các trường: advance='{config['advance_field']}', payment='{config['payment_field']}'")
-        print(f"     Status yêu cầu: {required_status}")
-        
-        # Hiển thị các điều kiện bổ sung nếu có
-        if additional_conditions:
-            print(f"     Điều kiện bổ sung:")
-            for condition in additional_conditions:
-                condition_node_short = condition['node_id'][:8]
-                condition_status = condition['required_status']
-                print(f"       - {condition_node_short}... phải có status {condition_status}")
+    workflow = get_workflow_config(approval_code)
+    if workflow and 'field_mappings' in workflow:
+        return workflow['field_mappings'].get(field_key)
+    return None
 
-
-def get_configured_node_ids():
+def get_qr_trigger_config(approval_code: str) -> list:
     """
-    Lấy danh sách tất cả node IDs đã được cấu hình.
-    
-    Returns:
-        List[str]: Danh sách tất cả node IDs có trong NODE_CONFIG
+    Lấy danh sách các cấu hình kích hoạt tạo QR cho một quy trình.
     """
-    return list(NODE_CONFIG.keys())
+    workflow = get_workflow_config(approval_code)
+    if workflow:
+        return workflow.get('qr_trigger_nodes', [])
+    return []
 
-
-# Backward compatibility - Giữ lại tên cũ để không break existing code
-ALLOWED_NODE_IDS = get_configured_node_ids()
-
+def print_workflow_summary():
+    """
+    In ra tóm tắt cấu hình của tất cả các quy trình phê duyệt.
+    """
+    print("📋 Tóm tắt cấu hình APPROVAL_WORKFLOWS:")
+    for code, config in APPROVAL_WORKFLOWS.items():
+        print(f"\n Workflow: {config.get('name', 'N/A')} ({code})")
+        print(f"   - {len(config.get('nodes', {}))} nodes được cấu hình.")
+        print(f"   - {len(config.get('field_mappings', {}))} field mappings.")
+        print(f"   - {len(config.get('qr_trigger_nodes', []))} QR triggers.")
 ============================================================
 
 ============================================================
@@ -1564,10 +1598,12 @@ async def test_event_processing(instance_code: str):
 ============================================================
 FILE: app\core\routers\webhook.py
 ============================================================
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from app.core.infrastructure.event_bus import event_bus
-from app.core.utils.helpers import save_event_to_csv, get_event_type, extract_instance_code
+from app.core.utils.helpers import get_event_type, extract_instance_code
 from app.core.config.settings import settings
 
 router = APIRouter()
@@ -1580,7 +1616,6 @@ async def handle_lark_webhook(request: Request):
     Chức năng chính:
     - Nhận và xử lý các sự kiện webhook từ Lark
     - Xác thực URL verification cho webhook setup
-    - Lưu trữ tất cả events vào file CSV để audit
     - Xử lý các sự kiện phê duyệt qua event bus pattern
     - Trả về response phù hợp cho từng loại event
 
@@ -1595,6 +1630,17 @@ async def handle_lark_webhook(request: Request):
     """
     try:
         data = await request.json()
+
+        # =================================================================
+        # BẮT ĐẦU LOG DEBUG: In ra toàn bộ payload của webhook để kiểm tra
+        # =================================================================
+        print("👇----- [DEBUG] BẮT ĐẦU PAYLOAD WEBHOOK THÔ -----👇")
+        # Sử dụng json.dumps để in ra cấu trúc JSON đẹp mắt, dễ đọc
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print("👆----- [DEBUG] KẾT THÚC PAYLOAD WEBHOOK THÔ -----👆")
+        # =================================================================
+
+
         print(f"📨 Nhận được webhook: {get_event_type(data)}")
 
         # Xử lý xác thực URL khi setup webhook
@@ -1602,27 +1648,32 @@ async def handle_lark_webhook(request: Request):
             print("🔐 Đang xử lý URL verification")
             return JSONResponse(content={"challenge": data.get("challenge")})
 
-        print("💾 Đang lưu event vào CSV...")
-        await save_event_to_csv(data, settings.EVENTS_FILE)
-
         # Xử lý các sự kiện phê duyệt thông qua event bus
         event_type = get_event_type(data)
         if "approval" in event_type.lower():
             instance_code = extract_instance_code(data)
             if instance_code:
-                print(f"🔍 Đang xử lý instance phê duyệt: {instance_code}")
+                # Trích xuất approval_code để xác định quy trình
+                event_body = data.get("event", {})
+                approval_code = event_body.get("approval_code")
 
-                # Phát hành event qua event bus - sẽ kích hoạt tất cả handlers đã đăng ký
-                print("📡 Đang phát hành event qua event bus...")
-                await event_bus.publish("approval.instance.updated", {
-                    "instance_code": instance_code,
-                    "event_type": event_type,
-                    "timestamp": data.get("header", {}).get("create_time"),
-                    "raw_data": data
-                })
-                print("✅ Đã phát hành event thành công")
+                if approval_code:
+                    print(f"🔍 Đang xử lý instance: {instance_code} cho quy trình: {approval_code}")
+
+                    # Thêm approval_code vào payload của event bus
+                    print("📡 Đang phát hành event qua event bus...")
+                    await event_bus.publish("approval.instance.updated", {
+                        "instance_code": instance_code,
+                        "approval_code": approval_code,
+                        "event_type": event_type,
+                        "timestamp": data.get("header", {}).get("create_time"),
+                        "raw_data": data
+                    })
+                    print("✅ Đã phát hành event thành công")
+                else:
+                    print(f"⚠️ Không tìm thấy 'approval_code' trong event cho instance: {instance_code}. Bỏ qua.")
             else:
-                print("⚠️ Không tìm thấy instance code trong event phê duyệt")
+                print("⚠️ Không tìm thấy 'instance_code' trong event phê duyệt.")
 
         print("🎉 Xử lý webhook hoàn tất")
         return JSONResponse(content={"status": "success", "architecture": "DDD"})
@@ -2872,7 +2923,7 @@ class QREventHandler:
     
     Quy trình xử lý:
     1. Nhận sự kiện phê duyệt từ hệ thống
-    2. Trích xuất instance_code từ event data
+    2. Trích xuất instance_code và approval_code từ event data
     3. Lấy access token để gọi Lark API
     4. Gửi đến QRProcessor để xử lý tạo QR
     5. Trả về kết quả xử lý
@@ -2889,34 +2940,21 @@ class QREventHandler:
         """
         Xử lý sự kiện phê duyệt để tạo mã QR tự động.
         
-        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
-        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
-        
-        Đây là method chính của handler, hoạt động hoàn toàn độc lập
-        và không phụ thuộc vào các service khác. Method sẽ:
-        
-        1. Validate dữ liệu đầu vào (instance_code)
-        2. Lấy access token từ Lark service
-        3. Gọi QRProcessor để xử lý business logic
-        4. Trả về kết quả chi tiết cho monitoring
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn và nhận diện quy trình
+        qua approval_code.
         
         Args:
             event_data (Dict): Dữ liệu sự kiện chứa thông tin phê duyệt.
-                             Bắt buộc phải có 'instance_code'
+                             Bắt buộc phải có 'instance_code' và 'approval_code'.
         
         Returns:
-            Dict: Kết quả xử lý bao gồm:
-                - success (bool): Trạng thái xử lý thành công
-                - message (str): Thông báo chi tiết kết quả
-                - instance_code (str): Mã instance đã xử lý (nếu có)
-                - service (str): Tên service thực hiện
-        
-        Raises:
-            Exception: Các lỗi không xác định sẽ được bắt và trả về trong response
+            Dict: Kết quả xử lý chi tiết.
         """
         try:
-            # Bước 1: Validate và trích xuất instance_code từ event data
+            # [THAY ĐỔI] Trích xuất cả instance_code và approval_code từ event
             instance_code = event_data.get('instance_code')
+            approval_code = event_data.get('approval_code')
+
             if not instance_code:
                 print(f"❌ [QR Handler] Thiếu instance_code trong dữ liệu sự kiện")
                 return {
@@ -2925,27 +2963,34 @@ class QREventHandler:
                     "service": self.name
                 }
             
-            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
-            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+            # [THÊM MỚI] Kiểm tra sự tồn tại của approval_code
+            if not approval_code:
+                print(f"❌ [QR Handler] Thiếu approval_code trong dữ liệu sự kiện cho instance: {instance_code}")
+                return {
+                    "success": False,
+                    "message": "Không tìm thấy approval_code trong dữ liệu sự kiện",
+                    "instance_code": instance_code,
+                    "service": self.name
+                }
 
-            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            # Logic kiểm tra trạng thái đơn (giữ nguyên)
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
             
-            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [QR Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
                 return {
-                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "success": True,
                     "message": f"Bỏ qua xử lý do trạng thái đơn là {instance_status}",
                     "instance_code": instance_code,
                     "service": self.name
                 }
-            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
             
-            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
+            # [THAY ĐỔI] Cập nhật log để hiển thị cả approval_code
+            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Workflow: {approval_code})")
             
-            # Bước 2: Lấy access token để gọi Lark API
+            # Lấy access token (giữ nguyên)
             print(f"🔑 Đang lấy access token từ Lark...")
             access_token = await lark_service.get_access_token()
             if not access_token:
@@ -2958,13 +3003,13 @@ class QREventHandler:
             
             print(f"✅ Đã lấy access token thành công")
             
-            # Bước 3: Gửi đến QRProcessor để xử lý business logic chính
+            # [THAY ĐỔI] Truyền approval_code vào service xử lý logic nghiệp vụ
             print(f"⚙️ Bắt đầu xử lý tạo QR cho {instance_code}...")
             result = await qr_processor.process_approval_with_qr_comment(
-                instance_code, access_token
+                instance_code, approval_code, access_token
             )
             
-            # Bước 4: Tạo response với thông tin chi tiết
+            # Xử lý kết quả trả về (giữ nguyên)
             if result:
                 print(f"✅ [QR Handler] Hoàn thành xử lý QR cho {instance_code}")
                 return {
@@ -2983,7 +3028,7 @@ class QREventHandler:
                 }
             
         except Exception as e:
-            # Bắt tất cả exception không xác định để tránh crash service
+            # Xử lý lỗi (giữ nguyên)
             print(f"❌ Lỗi không xác định trong QR Service: {str(e)}")
             import traceback
             print(f"📋 Chi tiết lỗi:\n{traceback.format_exc()}")
@@ -3468,147 +3513,29 @@ FILE: app\domains\qr_generation\services\qr_processor.py
 ============================================================
 import json
 from app.core.config.settings import settings
-# NODE_CONFIG và AmountDetector không còn cần thiết cho logic chính, nhưng giữ lại import để không ảnh hưởng các hàm phụ
-from app.core.config.node_config import NODE_CONFIG
-from app.core.config.field_constants import FFN
+# [THAY ĐỔI] Import các hàm helper mới từ node_config
+from app.core.config.node_config import get_workflow_config, get_field_mapping, get_qr_trigger_config
 from app.core.infrastructure.lark_service import lark_service
 from app.core.infrastructure.cache_service import cache_service
 from app.core.utils.field_extractor import FieldExtractor
 from app.domains.qr_generation.services.vietqr_service import vietqr_service
-# AmountDetector không còn được sử dụng trong hàm chính nữa
-# from app.domains.qr_generation.services.amount_detector import AmountDetector
 from app.domains.qr_generation.models import QRType, BankInfo
+from typing import Dict, Any
 
 class QRProcessor:
     """
     Bộ xử lý QR chính - Quản lý logic nghiệp vụ tạo và xử lý mã QR cho hệ thống phê duyệt.
     
-    Class này xử lý toàn bộ quy trình từ việc kiểm tra node phê duyệt, trích xuất dữ liệu,
-    validate thông tin, tạo mã VietQR và upload lên hệ thống Lark.
+    [NÂNG CẤP] Class này giờ đây đọc cấu hình động từ APPROVAL_WORKFLOWS để hỗ trợ
+    nhiều quy trình phê duyệt khác nhau.
     
     Attributes:
-        field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
+        field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form.
     """
 
     def __init__(self):
         """Khởi tạo QRProcessor với các service cần thiết."""
         self.field_extractor = FieldExtractor()
-        # self.amount_detector không còn cần thiết nữa
-        # self.amount_detector = AmountDetector()
-
-    # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
-    def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
-        """
-        Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
-        (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
-        """
-        if node_config is None:
-            node_config = NODE_CONFIG
-        # ... logic của hàm cũ giữ nguyên ...
-        try:
-            # Trích xuất dữ liệu từ API response
-            data = api_response.get('data', {})
-            task_list = data.get('task_list', [])
-            configured_node_ids = list(node_config.keys())
-            
-            # Tạo map để tra cứu nhanh trạng thái của các node
-            node_status_map = {}
-            for task in task_list:
-                node_id = task.get('node_id')
-                status = task.get('status', 'UNKNOWN')
-                if node_id:
-                    node_status_map[node_id] = status
-            
-            print(f"🔍 Đang kiểm tra các node với điều kiện bổ sung:")
-            for node_id, config in node_config.items():
-                required_status = config.get('required_status', 'PENDING')
-                additional_conditions = config.get('additional_conditions', [])
-                print(f"   • {node_id[:8]}... - {config['name']} (yêu cầu: {required_status})")
-                if additional_conditions:
-                    for condition in additional_conditions:
-                        print(f"     + Điều kiện thêm: {condition['node_id'][:8]}... phải ở trạng thái {condition['required_status']}")
-            
-            print(f"📋 Danh sách task chứa {len(task_list)} nhiệm vụ")
-            
-            matching_configured_nodes = []
-            
-            # Duyệt qua từng node đã cấu hình
-            for node_id in configured_node_ids:
-                config = node_config[node_id]
-                required_status = config.get('required_status', 'PENDING')
-                current_status = node_status_map.get(node_id, 'NOT_FOUND')
-                
-                # Kiểm tra điều kiện chính
-                if current_status != required_status:
-                    continue
-                    
-                # Kiểm tra các điều kiện bổ sung
-                additional_conditions = config.get('additional_conditions', [])
-                all_conditions_met = True
-                
-                for condition in additional_conditions:
-                    condition_node_id = condition['node_id']
-                    condition_required_status = condition['required_status']
-                    condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
-                    
-                    print(f"🔍 Kiểm tra điều kiện bổ sung: {condition_node_id[:8]}... ")
-                    print(f"   Yêu cầu: {condition_required_status}, Hiện tại: {condition_current_status}")
-                    
-                    if condition_current_status != condition_required_status:
-                        all_conditions_met = False
-                        print(f"❌ Điều kiện bổ sung không đáp ứng cho {node_id[:8]}...")
-                        break
-                    else:
-                        print(f"✅ Điều kiện bổ sung đã đáp ứng")
-                
-                # Nếu tất cả điều kiện đều thỏa mãn
-                if all_conditions_met:
-                    matching_configured_nodes.append({
-                        'node_id': node_id,
-                        'config': config,
-                        'strategy': config['strategy'],
-                        'matched_status': current_status,
-                        'required_status': required_status,
-                        'additional_conditions_met': True
-                    })
-                    print(f"✅ Tìm thấy node phù hợp: {node_id[:8]}... ({config['name']}) - Trạng thái: {current_status}")
-            
-            # Trả về node phù hợp đầu tiên
-            if matching_configured_nodes:
-                first_matching = matching_configured_nodes[0]
-                return {
-                    'found': True,
-                    'node_id': first_matching['node_id'],
-                    'node_config': first_matching['config'],
-                    'strategy': first_matching['strategy'],
-                    'matched_status': first_matching['matched_status'],
-                    'required_status': first_matching['required_status'],
-                    'all_tasks': task_list,
-                    'all_matching_configured': matching_configured_nodes,
-                    'node_status_map': node_status_map
-                }
-            else:
-                print(f"❌ Không tìm thấy node nào đáp ứng tất cả điều kiện")
-                return {
-                    'found': False,
-                    'node_id': None,
-                    'node_config': None,
-                    'strategy': None,
-                    'matched_status': None,
-                    'all_tasks': task_list,
-                    'all_matching_configured': [],
-                    'node_status_map': node_status_map
-                }
-            
-        except Exception as e:
-            print(f"❌ Lỗi khi kiểm tra node: {e}")
-            return {
-                'found': False,
-                'error': str(e),
-                'all_tasks': [],
-                'all_matching_configured': []
-            }
-
 
     def validate_amount_value(self, amount_value) -> dict:
         """
@@ -3629,78 +3556,104 @@ class QRProcessor:
         except (ValueError, TypeError) as e:
             return {'valid': False, 'amount': None, 'error': f'Định dạng số tiền không hợp lệ: {str(e)}'}
 
-    async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
+    def _find_active_qr_trigger(self, task_list: list, form_data: list, qr_trigger_configs: list) -> Dict[str, Any]:
         """
-        Xử lý phê duyệt với tạo QR code và comment (phiên bản nâng cấp hỗ trợ nhiều lần tạm ứng).
+        [HÀM MỚI] Tìm kiếm node đang hoạt động khớp với các điều kiện trong cấu hình qr_trigger_nodes.
+        """
+        # Tạo một map để tra cứu các node theo tên
+        nodes_by_name = {}
+        for task in task_list:
+            node_name = task.get('node_name', '')
+            if node_name not in nodes_by_name:
+                nodes_by_name[node_name] = []
+            nodes_by_name[node_name].append(task)
+            
+        # Duyệt qua từng cấu hình trigger (ví dụ: một cho tạm ứng, một cho thanh toán)
+        for trigger_config in qr_trigger_configs:
+            node_name_contains = trigger_config.get("node_name_contains")
+            required_status = trigger_config.get("status")
+
+            # Tìm tất cả các node có tên khớp với cấu hình
+            matching_nodes = []
+            for name, nodes in nodes_by_name.items():
+                if node_name_contains in name:
+                    matching_nodes.extend(nodes)
+
+            print(f"🔍 Tìm thấy {len(matching_nodes)} node có tên chứa '{node_name_contains}'.")
+
+            # Lặp qua các node đã tìm thấy để kiểm tra điều kiện
+            for i, node in enumerate(matching_nodes, 1):
+                node_id = node.get('node_id')
+                node_status = node.get('status')
+                print(f"   - Kiểm tra lần {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+
+                if node_status == required_status:
+                    # Lấy template từ config để tạo tên trường động
+                    yes_no_field_template = trigger_config.get("yes_no_field_template")
+                    amount_field_template = trigger_config.get("amount_field_template")
+
+                    yes_no_field_name = yes_no_field_template.format(i=i)
+                    amount_field_name = amount_field_template.format(i=i)
+
+                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
+                    
+                    if yes_no_value == "Yes":
+                        print(f"     ✅ Điều kiện thỏa mãn: Node {required_status} và người dùng chọn 'Yes'.")
+                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
+                        
+                        return {
+                            "amount": amount_value,
+                            "node_id": node_id,
+                            "node_name": node.get('node_name'),
+                            "qr_type": trigger_config.get("qr_type", "unknown"),
+                            "field_used": amount_field_name,
+                            "trigger_round": i
+                        }
+                    else:
+                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
+                else:
+                    print(f"     - Bỏ qua: Trạng thái node không phải {required_status}.")
+
+        return None # Không tìm thấy trigger nào hoạt động
+
+    # [THAY ĐỔI] Signature của hàm đã thay đổi để nhận approval_code
+    async def process_approval_with_qr_comment(self, instance_code: str, approval_code: str, access_token: str) -> bool:
+        """
+        [NÂNG CẤP] Xử lý phê duyệt bằng cách đọc cấu hình động dựa trên approval_code.
         """
         try:
-            # Bước 1: Lấy thông tin chi tiết của instance
+            # Bước 1: Lấy cấu hình cho quy trình hiện tại
+            workflow_config = get_workflow_config(approval_code)
+            if not workflow_config:
+                print(f"❌ Không tìm thấy cấu hình cho quy trình '{approval_code}'. Bỏ qua.")
+                return True # Coi như thành công vì không có gì để làm
+
+            print(f"⚙️ Áp dụng cấu hình cho quy trình: {workflow_config.get('name')}")
+
+            # Bước 2: Lấy thông tin chi tiết của instance
             api_response = await lark_service.get_approval_instance(instance_code, access_token)
             if not api_response or 'data' not in api_response:
                 print(f"❌ Không thể lấy thông tin instance {instance_code}")
                 return False
             
             task_list = api_response['data'].get('task_list', [])
-            form_str = api_response['data'].get('form', '[]')
-            form_data = json.loads(form_str)
+            form_data = json.loads(api_response['data'].get('form', '[]'))
 
-            # --- [LOGIC MỚI] Bắt đầu phần tìm kiếm lần tạm ứng hoạt động ---
-            
-            # 2.1: Tìm tất cả các node "Thủ quỹ chi tiền tạm ứng" trong quy trình
-            cashier_nodes = [task for task in task_list if "Thủ quỹ chi tiền tạm ứng" in task.get('node_name', '')]
-            print(f"🔍 Tìm thấy {len(cashier_nodes)} node 'Thủ quỹ chi tiền tạm ứng' trong quy trình.")
+            # Bước 3: [LOGIC MỚI] Tìm node đang hoạt động dựa trên cấu hình
+            qr_trigger_configs = workflow_config.get('qr_trigger_nodes', [])
+            active_trigger_info = self._find_active_qr_trigger(task_list, form_data, qr_trigger_configs)
 
-            active_advance_info = None
-            
-            # 2.2: Lặp qua các node thủ quỹ để tìm node đang PENDING
-            for i, node in enumerate(cashier_nodes, 1):
-                node_id = node.get('node_id')
-                node_status = node.get('status')
-                print(f"   - Kiểm tra lần tạm ứng {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+            if not active_trigger_info:
+                print(f"⏭️ Không có trigger tạo QR nào đang hoạt động cho instance {instance_code}. Bỏ qua.")
+                return True
 
-                # Điều kiện 1: Node phải ở trạng thái PENDING
-                if node_status == 'PENDING':
-                    # Điều kiện 2: Người dùng phải chọn "Yes" cho lần tạm ứng tương ứng
-                    yes_no_field_name = f"Thanh toán tạm ứng lần {i}: Y/N"
-                    amount_field_name = f"Số tiền tạm ứng lần {i}:"
-
-                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
-                    
-                    if yes_no_value == "Yes":
-                        print(f"     ✅ Điều kiện thỏa mãn: Node PENDING và người dùng chọn 'Yes'.")
-                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
-                        
-                        active_advance_info = {
-                            "amount": amount_value,
-                            "node_id": node_id,
-                            "node_name": node.get('node_name'),
-                            "qr_type": "advance",
-                            "field_used": amount_field_name,
-                            "advance_round": i
-                        }
-                        print(f"     ➡️ Lần tạm ứng {i} được kích hoạt với số tiền: {amount_value}")
-                        break # Tìm thấy rồi thì dừng lại
-                    else:
-                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
-                else:
-                    print(f"     - Bỏ qua: Trạng thái node không phải PENDING.")
-
-            # 2.3: Xử lý kết quả tìm kiếm
-            if not active_advance_info:
-                print(f"⏭️  Không có lần tạm ứng nào đang hoạt động (PENDING và được chọn 'Yes'). Bỏ qua tạo QR.")
-                return True # Coi như thành công vì đã xử lý đúng (bỏ qua)
-
-            # --- [LOGIC MỚI] Kết thúc phần tìm kiếm ---
-
-
-            # --- [PHẦN GIỮ NGUYÊN] Tiếp tục xử lý với thông tin đã tìm được ---
-
-            # Lấy các biến từ kết quả tìm kiếm
-            matching_node_id = active_advance_info['node_id']
-            qr_type = active_advance_info['qr_type']
-            amount_value = active_advance_info['amount']
-            field_used = active_advance_info['field_used']
-            node_name = active_advance_info['node_name']
+            # Bước 4: Trích xuất thông tin từ trigger đã tìm thấy
+            matching_node_id = active_trigger_info['node_id']
+            qr_type = active_trigger_info['qr_type']
+            amount_value = active_trigger_info['amount']
+            field_used = active_trigger_info['field_used']
+            node_name = active_trigger_info['node_name']
+            trigger_round = active_trigger_info['trigger_round']
             
             # Bước 5: Kiểm tra duplicate TRƯỚC KHI tạo QR
             if cache_service.is_qr_recently_generated(
@@ -3708,10 +3661,9 @@ class QRProcessor:
                 settings.QR_CACHE_DURATION_MINUTES
             ):
                 print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_name} đã được tạo gần đây.")
-                print(f"   → BỎ QUA tạo QR để tránh trùng lặp.")
                 return True
             
-            print(f"💰 Chi tiết tạo QR cho lần tạm ứng {active_advance_info['advance_round']}:")
+            print(f"💰 Chi tiết tạo QR cho lần {trigger_round}:")
             print(f"   - Loại: {qr_type}")
             print(f"   - Số tiền: {amount_value}")
             print(f"   - Trường sử dụng: {field_used}")
@@ -3722,60 +3674,55 @@ class QRProcessor:
             if not amount_validation['valid']:
                 print(f"❌ Số tiền không hợp lệ: {amount_validation['error']}")
                 return False
-                
             amount_int = amount_validation['amount']
 
-            # Bước 7: Trích xuất thông tin ngân hàng
-            bank_id = self.field_extractor.extract_field_value(form_data, FFN.BANK_NAME)
-            account_no = self.field_extractor.extract_field_value(form_data, FFN.BANK_ACCOUNT_NUMBER)
-            account_name = self.field_extractor.extract_field_value(form_data, FFN.BENEFICIARY_NAME)
+            # Bước 7: [LOGIC MỚI] Trích xuất thông tin ngân hàng từ field_mappings
+            field_mappings = workflow_config.get('field_mappings', {})
+            bank_id_field = field_mappings.get('bank_name')
+            account_no_field = field_mappings.get('account_number')
+            account_name_field = field_mappings.get('beneficiary_name')
+
+            if not all([bank_id_field, account_no_field, account_name_field]):
+                 print(f"❌ Lỗi cấu hình: Thiếu 'bank_name', 'account_number', hoặc 'beneficiary_name' trong field_mappings của quy trình {approval_code}.")
+                 return False
+
+            bank_id = self.field_extractor.extract_field_value(form_data, bank_id_field)
+            account_no = self.field_extractor.extract_field_value(form_data, account_no_field)
+            account_name = self.field_extractor.extract_field_value(form_data, account_name_field)
 
             if not all([bank_id, account_no, account_name]):
-                missing = [f for f, v in {FFN.BANK_NAME: bank_id, FFN.BANK_ACCOUNT_NUMBER: account_no, FFN.BENEFICIARY_NAME: account_name}.items() if not v]
-                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing)}")
+                missing = [f for f, v in {bank_id_field: bank_id, account_no_field: account_no, account_name_field: account_name}.items() if not v]
+                print(f"❌ Thiếu thông tin ngân hàng trên form: {', '.join(missing)}")
                 return False
             
-            # Bước 8: Tạo mô tả QR theo loại
-            description = vietqr_service.generate_qr_description(f"{qr_type}{active_advance_info['advance_round']}", instance_code)
+            # Bước 8: Tạo mô tả QR
+            description = vietqr_service.generate_qr_description(f"{qr_type}{trigger_round}", instance_code)
             
-            print(f"🏦 Tạo VietQR với thông tin:")
-            print(f"   - Ngân hàng: {bank_id}")
-            print(f"   - Số tài khoản: {account_no}")
-            print(f"   - Tên người nhận: {account_name}")
-            print(f"   - Số tiền: {amount_int:,} VND")
-            print(f"   - Mô tả: {description}")
-            
-            # Bước 9: Tạo VietQR code trong bộ nhớ
+            # Bước 9: Tạo VietQR code
             qr_image_buffer = vietqr_service.create_qr_in_memory(
-                bank_id=bank_id,
-                account_no=account_no,
-                amount=amount_int,
-                description=description,
-                account_name=account_name
+                bank_id, account_no, amount_int, description, account_name
             )
-            
             if not qr_image_buffer:
                 print("❌ Không thể tạo mã VietQR")
                 return False
             
-            # Bước 10: Upload ảnh lên Lark Approval
-            filename = f"{instance_code}_{qr_type}{active_advance_info['advance_round']}_qr.png"
+            # Bước 10: Upload ảnh lên Lark
+            filename = f"{instance_code}_{qr_type}{trigger_round}_qr.png"
             upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
-            
             if not upload_result['success']:
                 print(f"❌ Upload thất bại: {upload_result['error']}")
                 return False
             
-            # Bước 11: Đánh dấu đã tạo QR SAU KHI upload thành công
+            # Bước 11: Đánh dấu đã tạo QR
             cache_service.mark_qr_as_generated(instance_code, matching_node_id, qr_type)
             
-            # Bước 12: Tạo comment nâng cao với thông tin chi tiết
+            # Bước 12: Tạo comment
             comment_result = await lark_service.create_enhanced_comment_with_image(
                 instance_code=instance_code,
                 file_url=upload_result['file_url'],
                 file_code=upload_result['file_code'],
                 filename=filename,
-                qr_type=f"{qr_type} Lần {active_advance_info['advance_round']}", # Làm rõ hơn trong comment
+                qr_type=f"{qr_type.capitalize()} Lần {trigger_round}",
                 amount=amount_int,
                 node_name=node_name,
                 access_token=access_token
@@ -3783,22 +3730,160 @@ class QRProcessor:
             
             if comment_result['success']:
                 print(f"✅ Hoàn thành xử lý phê duyệt {instance_code}")
-                print(f"💰 Loại: {qr_type.upper()} LẦN {active_advance_info['advance_round']} | Số tiền: {amount_int:,} VND")
-                print(f"🏷️ Node: {node_name}")
-                print(f"📋 Trường: {field_used}")
-                print(f"💬 ID Comment: {comment_result['comment_id']}")
                 return True
             else:
                 print(f"❌ Tạo comment thất bại: {comment_result['error']}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Lỗi xử lý phê duyệt: {e}")
+            print(f"❌ Lỗi nghiêm trọng khi xử lý phê duyệt: {e}")
             import traceback
             traceback.print_exc()
             return False
 
 qr_processor = QRProcessor()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# class QRProcessor:
+#     """
+#     Bộ xử lý QR chính - Quản lý logic nghiệp vụ tạo và xử lý mã QR cho hệ thống phê duyệt.
+    
+#     Class này xử lý toàn bộ quy trình từ việc kiểm tra node phê duyệt, trích xuất dữ liệu,
+#     validate thông tin, tạo mã VietQR và upload lên hệ thống Lark.
+    
+#     Attributes:
+#         field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
+#     """
+
+#     def __init__(self):
+#         """Khởi tạo QRProcessor với các service cần thiết."""
+#         self.field_extractor = FieldExtractor()
+#         # self.amount_detector không còn cần thiết nữa
+#         # self.amount_detector = AmountDetector()
+
+#     # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
+#     def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
+#         """
+#         Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
+#         (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
+#         """
+#         if node_config is None:
+#             node_config = NODE_CONFIG
+#         # ... logic của hàm cũ giữ nguyên ...
+#         try:
+#             # Trích xuất dữ liệu từ API response
+#             data = api_response.get('data', {})
+#             task_list = data.get('task_list', [])
+#             configured_node_ids = list(node_config.keys())
+            
+#             # Tạo map để tra cứu nhanh trạng thái của các node
+#             node_status_map = {}
+#             for task in task_list:
+#                 node_id = task.get('node_id')
+#                 status = task.get('status', 'UNKNOWN')
+#                 if node_id:
+#                     node_status_map[node_id] = status
+            
+#             print(f"🔍 Đang kiểm tra các node với điều kiện bổ sung:")
+#             for node_id, config in node_config.items():
+#                 required_status = config.get('required_status', 'PENDING')
+#                 additional_conditions = config.get('additional_conditions', [])
+#                 print(f"   • {node_id[:8]}... - {config['name']} (yêu cầu: {required_status})")
+#                 if additional_conditions:
+#                     for condition in additional_conditions:
+#                         print(f"     + Điều kiện thêm: {condition['node_id'][:8]}... phải ở trạng thái {condition['required_status']}")
+            
+#             print(f"📋 Danh sách task chứa {len(task_list)} nhiệm vụ")
+            
+#             matching_configured_nodes = []
+            
+#             # Duyệt qua từng node đã cấu hình
+#             for node_id in configured_node_ids:
+#                 config = node_config[node_id]
+#                 required_status = config.get('required_status', 'PENDING')
+#                 current_status = node_status_map.get(node_id, 'NOT_FOUND')
+                
+#                 # Kiểm tra điều kiện chính
+#                 if current_status != required_status:
+#                     continue
+                    
+#                 # Kiểm tra các điều kiện bổ sung
+#                 additional_conditions = config.get('additional_conditions', [])
+#                 all_conditions_met = True
+                
+#                 for condition in additional_conditions:
+#                     condition_node_id = condition['node_id']
+#                     condition_required_status = condition['required_status']
+#                     condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
+                    
+#                     print(f"🔍 Kiểm tra điều kiện bổ sung: {condition_node_id[:8]}... ")
+#                     print(f"   Yêu cầu: {condition_required_status}, Hiện tại: {condition_current_status}")
+                    
+#                     if condition_current_status != condition_required_status:
+#                         all_conditions_met = False
+#                         print(f"❌ Điều kiện bổ sung không đáp ứng cho {node_id[:8]}...")
+#                         break
+#                     else:
+#                         print(f"✅ Điều kiện bổ sung đã đáp ứng")
+                
+#                 # Nếu tất cả điều kiện đều thỏa mãn
+#                 if all_conditions_met:
+#                     matching_configured_nodes.append({
+#                         'node_id': node_id,
+#                         'config': config,
+#                         'strategy': config['strategy'],
+#                         'matched_status': current_status,
+#                         'required_status': required_status,
+#                         'additional_conditions_met': True
+#                     })
+#                     print(f"✅ Tìm thấy node phù hợp: {node_id[:8]}... ({config['name']}) - Trạng thái: {current_status}")
+            
+#             # Trả về node phù hợp đầu tiên
+#             if matching_configured_nodes:
+#                 first_matching = matching_configured_nodes[0]
+#                 return {
+#                     'found': True,
+#                     'node_id': first_matching['node_id'],
+#                     'node_config': first_matching['config'],
+#                     'strategy': first_matching['strategy'],
+#                     'matched_status': first_matching['matched_status'],
+#                     'required_status': first_matching['required_status'],
+#                     'all_tasks': task_list,
+#                     'all_matching_configured': matching_configured_nodes,
+#                     'node_status_map': node_status_map
+#                 }
+#             else:
+#                 print(f"❌ Không tìm thấy node nào đáp ứng tất cả điều kiện")
+#                 return {
+#                     'found': False,
+#                     'node_id': None,
+#                     'node_config': None,
+#                     'strategy': None,
+#                     'matched_status': None,
+#                     'all_tasks': task_list,
+#                     'all_matching_configured': [],
+#                     'node_status_map': node_status_map
+#                 }
+            
+#         except Exception as e:
+#             print(f"❌ Lỗi khi kiểm tra node: {e}")
+#             return {
+#                 'found': False,
+#                 'error': str(e),
+#                 'all_tasks': [],
+#                 'all_matching_configured': []
+#             }
 ============================================================
 
 ============================================================
@@ -4022,52 +4107,43 @@ class ValidationEventHandler:
         """
         Xử lý sự kiện phê duyệt để thực hiện validation với cơ chế anti-spam nâng cao.
 
-        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
-        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
-        
-        Quy trình xử lý mới:
-        1. Lấy dữ liệu instance từ Lark.
-        2. Chạy tất cả các validation rules.
-        3. Lọc ra các kết quả không hợp lệ (invalid).
-        4. **[LOGIC MỚI]** Lặp qua từng lỗi không hợp lệ:
-            a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
-            b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
-        5. Nếu có lỗi cần cảnh báo, gửi một webhook duy nhất chứa tất cả các lỗi mới.
-        6. **[LOGIC MỚI]** Sau khi gửi, ghi cache cho từng loại lỗi đã được cảnh báo.
+        [NÂNG CẤP] Bổ sung logic nhận diện quy trình qua approval_code.
         """
         instance_code = event_data.get('instance_code')
+        approval_code = event_data.get('approval_code')
+
         if not instance_code:
             return {"success": False, "message": "Không tìm thấy instance_code", "service": self.name}
+        
+        if not approval_code:
+            return {
+                "success": False, 
+                "message": f"Không tìm thấy approval_code cho instance {instance_code}", 
+                "service": self.name
+            }
 
         try:
-            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
-            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
 
-            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
-
-            # Nếu không có trong payload, thì tìm trong event body
             event_body = raw_data.get('event', {})
             if not instance_status:
                 instance_status = event_body.get('status')
 
-
-            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
                 return {
-                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "success": True,
                     "message": f"Bỏ qua validation do trạng thái đơn là {instance_status}",
                     "instance_code": instance_code,
-                    "webhook_sent": False, # Không có webhook nào được gửi
+                    "webhook_sent": False,
                     "service": self.name
                 }
-            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
-
-            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
-            # Bước 1 & 2: Lấy dữ liệu từ Lark
+            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Workflow: {approval_code})")
+            
+            # Lấy dữ liệu từ Lark (giữ nguyên)
             access_token = await lark_service.get_access_token()
             if not access_token:
                 return {"success": False, "message": "Không thể lấy access token", "service": self.name}
@@ -4080,9 +4156,11 @@ class ValidationEventHandler:
             form_data = json.loads(api_response['data'].get('form', '[]'))
             task_list = api_response['data'].get('task_list', [])
             
-            # Bước 3: Chạy validations và lọc ra các lỗi
             validation_results = validation_service.run_all_validations(
-                form_data, task_list, "dummy_node_id" # node_id có thể cần được truyền vào từ event_data nếu logic yêu cầu
+                approval_code=approval_code, # <-- Tham số mới
+                form_data=form_data, 
+                task_list=task_list, 
+                node_id="dummy_node_id" 
             )
             invalid_results = [r for r in validation_results if not r.is_valid]
             
@@ -4094,27 +4172,22 @@ class ValidationEventHandler:
                     "service": self.name
                 }
             
-            # --- PHẦN LOGIC ANTI-SPAM ĐƯỢC THAY THẾ HOÀN TOÀN ---
-            # Bước 4: Lọc ra các cảnh báo chưa được gửi (chưa có trong cache)
             alerts_to_send = []
             skipped_count = 0
             
             print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                # TẠO CACHE KEY CỤ THỂ CHO TỪNG LỖI
-                # Dùng hash của message để đảm bảo mỗi lỗi là duy nhất
                 specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                 
                 if cache_service.is_validation_alert_recently_sent(
                     instance_code, specific_error_key, cache_duration_minutes=10
                 ):
-                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...") # Log một phần message
+                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...")
                     skipped_count += 1
                 else:
                     print(f"  🆕 Cần gửi cảnh báo cho: {result.message[:80]}...")
                     alerts_to_send.append(result)
 
-            # Bước 5: Gửi webhook nếu có cảnh báo mới cần gửi
             webhook_sent = False
             if alerts_to_send:
                 error_messages = [r.message for r in alerts_to_send]
@@ -4122,11 +4195,9 @@ class ValidationEventHandler:
                 
                 webhook_sent = await self._send_validation_alert(instance_code, error_messages, serial_number)
                 
-                # Bước 6: Nếu gửi thành công, ghi cache cho từng lỗi đã gửi
                 if webhook_sent:
                     print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
-                        # DÙNG LẠI CACHE KEY CỤ THỂ ĐÃ TẠO Ở TRÊN
                         specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                         cache_service.mark_validation_alert_as_sent(instance_code, specific_error_key)
                         print(f"  🔒 Đã cache cho: {result.message[:80]}...")
@@ -4146,9 +4217,8 @@ class ValidationEventHandler:
             }
             
         except Exception as e:
-            # Xử lý lỗi hệ thống (giữ nguyên logic cũ)
+            # Xử lý lỗi hệ thống (giữ nguyên)
             print(f"❌ [Validation Handler] Lỗi nghiêm trọng trong Validation Service: {str(e)}")
-            # ... (phần xử lý lỗi này có thể giữ nguyên hoặc cải tiến sau)
             return {
                 "success": False,
                 "message": f"Lỗi Validation Service: {str(e)}",
@@ -4174,12 +4244,13 @@ class ValidationEventHandler:
     async def _send_error_alert(self, instance_code: str, error_message: str) -> bool:
         """Gửi cảnh báo lỗi hệ thống qua webhook service."""
         try:
-            # Logic này hiện không được dùng trong luồng chính nhưng giữ lại để có thể dùng sau
-            result = await self.webhook_service.send_custom_alert(
-                title="LỖI VALIDATION SERVICE",
-                message=f"Lỗi xử lý validation cho {instance_code}: {error_message}",
-                instance_code=instance_code
+            from app.domains.notification.models import CustomAlertRequest
+            alert_request = CustomAlertRequest(
+                 title="LỖI VALIDATION SERVICE",
+                 message=f"Lỗi xử lý validation cho {instance_code}: {error_message}",
+                 instance_code=instance_code
             )
+            result = await self.webhook_service.send_custom_alert(alert_request)
             return result.success
         except Exception as e:
             print(f"❌ Lỗi khi gửi error alert: {e}")
@@ -4408,33 +4479,18 @@ FILE: app\domains\validation\services\validation_service.py
 """
 Validation Service - Dịch vụ domain cho các quy tắc validation
 """
-from typing import Dict, List, Any, Optional
-from app.domains.validation.models import ValidationResult, ValidationType, ValidationStatus
+from typing import Dict, List, Any
+from app.domains.validation.models import ValidationResult, ValidationType
 from app.core.utils.field_extractor import FieldExtractor
-from app.core.config.field_constants import FFN
+# [THAY ĐỔI] Import các hàm helper mới
+from app.core.config.node_config import get_field_mapping
 
 class ValidationService:
     """
     Dịch vụ validation cho hệ thống phê duyệt.
     
-    Class này cung cấp các quy tắc validation khác nhau để kiểm tra
-    tính nhất quán và hợp lệ của dữ liệu trong quy trình phê duyệt:
-    
-    - ADVANCE_AMOUNT_MISMATCH: So sánh tổng số tiền tạm ứng
-    - PAYMENT_AMOUNT_MISMATCH: So sánh số tiền thanh toán
-    - TOTAL_AMOUNT_MISMATCH: Kiểm tra tổng số tiền thanh toán
-    - WORKFLOW_STATUS: Kiểm tra trạng thái node
-    - FIELD_CONSISTENCY: Kiểm tra logic giữa các trường
-    
-    Mỗi validation sẽ trả về ValidationResult với một trong các trạng thái:
-    - VALID: Validation pass
-    - INVALID: Validation fail  
-    - SKIPPED: Bỏ qua do thiếu dữ liệu
-    - ERROR: Có lỗi trong quá trình validation
-    
-    Attributes:
-        field_extractor (FieldExtractor): Công cụ trích xuất dữ liệu từ form
-        validation_rules (Dict): Map từ validation type đến method tương ứng
+    [NÂNG CẤP] Class này giờ đây đọc cấu hình field_mappings động dựa trên
+    approval_code để hỗ trợ các quy tắc validation cho nhiều quy trình.
     """
     
     def __init__(self):
@@ -4444,26 +4500,35 @@ class ValidationService:
         self.validation_rules = {
             ValidationType.ADVANCE_AMOUNT_MISMATCH: self.validate_advance_amount_mismatch,
             ValidationType.PAYMENT_AMOUNT_MISMATCH: self.validate_payment_amount_mismatch,
-            #ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
-            ValidationType.WORKFLOW_STATUS: self.validate_workflow_status,
-            ValidationType.FIELD_CONSISTENCY: self.validate_field_consistency,
+            # Các quy tắc khác có thể được thêm vào đây
         }
     
-    # Thay vì trả về ValidationResult, giờ đây hàm sẽ trả về List[ValidationResult]
-    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
+    # [THAY ĐỔI] Signature nhận thêm approval_code
+    def validate_advance_amount_mismatch(self, approval_code: str, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
         """
-        Trả về một danh sách các ValidationResult, mỗi result cho một lỗi.
+        So sánh số tiền tạm ứng giữa yêu cầu của người dùng và số tiền chi của kế toán.
+        Sử dụng tên trường động từ cấu hình.
         """
         try:
+            # [LOGIC MỚI] Lấy tên trường từ cấu hình động
+            accounting_advance_field = get_field_mapping(approval_code, "accounting_advance_info")
+            expenditure_field = get_field_mapping(approval_code, "expenditure_amount")
+
+            if not accounting_advance_field or not expenditure_field:
+                return [ValidationResult.create_skipped(
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Cấu hình 'accounting_advance_info' hoặc 'expenditure_amount' bị thiếu."
+                )]
+
             accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
+                form_data, accounting_advance_field, expenditure_field
             )
             
             results = []
             found_data = False
 
-            for i in range(1, 5): # Chỉ kiểm tra 4 lần
-                user_advance_field = f"Số tiền tạm ứng lần {i}:"
+            for i in range(1, 5): # Giữ nguyên logic kiểm tra 4 lần
+                user_advance_field = f"Số tiền tạm ứng lần {i}:" # Giả định tên trường này là cố định
                 user_advance_value = self.field_extractor.extract_field_value(form_data, user_advance_field)
                 
                 if user_advance_value is not None:
@@ -4480,55 +4545,57 @@ class ValidationService:
                     
                     if abs(user_amount - accountant_amount) >= 0.01:
                         message = (f"❌ Lỗi Tạm ứng Lần {i}: Yêu cầu ({user_amount:,.0f}) ≠ Kế toán chi ({accountant_amount:,.0f}). "
-                                f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
-                        # Tạo một result riêng cho lỗi này
+                                   f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
                         results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
                 except (ValueError, TypeError):
                     message = f"❌ Lỗi định dạng số Tạm ứng Lần {i}."
                     results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
 
-            # Nếu không có lỗi nào được tìm thấy và có dữ liệu để kiểm tra
             if not results and found_data:
                 results.append(ValidationResult.create_valid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "✅ Tất cả các lần tạm ứng đã khớp."
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH, "✅ Tất cả các lần tạm ứng đã khớp."
                 ))
             
-            # Nếu không có dữ liệu để kiểm tra
             if not found_data:
                 results.append(ValidationResult.create_skipped(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH, "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
                 ))
             
             return results
                 
         except Exception as e:
             return [ValidationResult.create_error(
-                ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}",
+                ValidationType.ADVANCE_AMOUNT_MISMATCH, f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}"
             )]
 
-    def validate_payment_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+    # [THAY ĐỔI] Signature nhận thêm approval_code
+    def validate_payment_amount_mismatch(self, approval_code: str, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tính nhất quán số tiền thanh toán (giữ nguyên logic cũ).
-        
-        So sánh "Kế toán - Thông tin thanh toán" với "Số tiền còn phải thanh toán" 
-        hoặc "Số tiền thanh toán".
+        Validation tính nhất quán số tiền thanh toán, sử dụng tên trường động.
         """
         try:
+            # [LOGIC MỚI] Lấy tên trường từ cấu hình động
+            accounting_payment_field = get_field_mapping(approval_code, "accounting_payment_info")
+            expenditure_field = get_field_mapping(approval_code, "expenditure_amount")
+            # [LOGIC MỚI] Lấy các trường thanh toán khác từ cấu hình (ví dụ)
+            # Giả sử chúng ta thêm các key này vào field_mappings
+            remaining_payment_field = get_field_mapping(approval_code, "remaining_payment_amount") or "Số tiền còn phải thanh toán"
+            payment_field = get_field_mapping(approval_code, "payment_amount") or "Số tiền thanh toán"
+
+            if not accounting_payment_field or not expenditure_field:
+                 return ValidationResult.create_skipped(
+                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Cấu hình 'accounting_payment_info' hoặc 'expenditure_amount' bị thiếu."
+                )
+
             payment_info_amount = self.field_extractor.extract_field_from_fieldlist(
-                form_data,  FFN.ACCOUNTING_PAYMENT_INFO, FFN.EXPENDITURE_AMOUNT
+                form_data,  accounting_payment_field, expenditure_field
             )
-            amount_due = self.field_extractor.extract_field_value(
-                form_data,  FFN.REMAINING_PAYMENT_AMOUNT
-            )
-            amount_paid = self.field_extractor.extract_field_value(
-                form_data, FFN.PAYMENT_AMOUNT
-            )
+            amount_due = self.field_extractor.extract_field_value(form_data,  remaining_payment_field)
+            amount_paid = self.field_extractor.extract_field_value(form_data, payment_field)
             
             compare_amount = amount_due if amount_due is not None else amount_paid
-            compare_field_name = FFN.REMAINING_PAYMENT_AMOUNT if amount_due is not None else FFN.PAYMENT_AMOUNT
+            compare_field_name = remaining_payment_field if amount_due is not None else payment_field
 
             if payment_info_amount is None or compare_amount is None:
                 return ValidationResult.create_skipped(
@@ -4541,8 +4608,7 @@ class ValidationService:
 
             if abs(payment_info_float - compare_amount_float) < 0.01:
                 return ValidationResult.create_valid(
-                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
+                    ValidationType.PAYMENT_AMOUNT_MISMATCH, f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
                 )
             else:
                 message = (f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,.0f}) ≠ "
@@ -4552,141 +4618,28 @@ class ValidationService:
                 return ValidationResult.create_invalid(ValidationType.PAYMENT_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}"
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
-            )
-
-    def validate_total_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
-        """
-        Validation tổng số tiền thanh toán dựa trên các khoản chi đã được kế toán xác nhận.
-        
-        Công thức: Total = (Tổng các khoản chi trong FieldList "Kế toán - Thông tin tạm ứng") + (Số tiền còn phải thanh toán).
-        """
-        try:
-            # Lấy tổng các khoản chi tạm ứng THỰC TẾ từ kế toán
-            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
-            )
-            total_accountant_advance = sum(float(v) for v in accountant_expenditures if v is not None and str(v).strip() != '')
-
-            # Lấy các trường còn lại
-            amount_due = self.field_extractor.extract_field_value(form_data, FFN.REMAINING_PAYMENT_AMOUNT)
-            total_payment_actual = self.field_extractor.extract_field_value(form_data, FFN.TOTAL_PAYMENT_AMOUNT)
-
-            if total_accountant_advance == 0 and amount_due is None:
-                return ValidationResult.create_skipped(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Kế toán chưa điền thông tin chi hoặc số tiền còn lại."
-                )
-
-            if total_payment_actual is None:
-                return ValidationResult.create_skipped(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Không tìm thấy trường '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
-                )
-
-            amount_due_float = float(amount_due) if amount_due is not None else 0.0
-            total_actual_float = float(total_payment_actual)
-            
-            total_expected = total_accountant_advance + amount_due_float
-
-            if abs(total_expected - total_actual_float) < 0.01:
-                return ValidationResult.create_valid(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,.0f} VND"
-                )
-            else:
-                case_description = f"Tổng Kế toán chi ({total_accountant_advance:,.0f}) + Còn Lại ({amount_due_float:,.0f})"
-                message = (f"❌ Lỗi tổng tiền: Thực tế ({total_actual_float:,.0f}) ≠ "
-                        f"Dự kiến ({total_expected:,.0f} từ {case_description}). "
-                        f"Chênh lệch: {abs(total_expected - total_actual_float):,.0f} VND")
-                details = {
-                    "total_expected": total_expected, 
-                    "total_actual": total_actual_float,
-                    "total_accountant_advance": total_accountant_advance,
-                    "remaining_payment": amount_due_float
-                }
-                return ValidationResult.create_invalid(ValidationType.TOTAL_AMOUNT_MISMATCH, message, details)
-        except (ValueError, TypeError) as e:
-            return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
-            )
-        except Exception as e:
-            return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}"
             )
     
-    def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
-        """
-        Validation trạng thái workflow để phát hiện node bị thu hồi.
-        """
-        try:
-            target_node = next((task for task in task_list if task.get('node_id') == node_id), None)
-            
-            if not target_node:
-                return ValidationResult.create_skipped(
-                    ValidationType.WORKFLOW_STATUS,
-                    f"ℹ️ Bỏ qua: Node {node_id[:8]}... không tìm thấy trong danh sách task"
-                )
-            
-            current_status = target_node.get('status', 'UNKNOWN')
-            problematic_statuses = ['REJECTED', 'CANCELED', 'WITHDRAWN']
-            if current_status in problematic_statuses:
-                return ValidationResult.create_invalid(
-                    ValidationType.WORKFLOW_STATUS,
-                    f"⚠️ CẢNH BÁO: Node {node_id[:8]}... có trạng thái {current_status} - có thể đã bị thu hồi hoặc từ chối"
-                )
-            
-            return ValidationResult.create_valid(
-                ValidationType.WORKFLOW_STATUS,
-                f"✅ Node {node_id[:8]}... có trạng thái bình thường: {current_status}"
-            )
-        except Exception as e:
-            return ValidationResult.create_error(
-                ValidationType.WORKFLOW_STATUS,
-                f"❌ Lỗi kiểm tra trạng thái workflow: {str(e)}"
-            )
-    
-    def validate_field_consistency(self, form_data: List[Dict], **kwargs) -> ValidationResult:
-        """
-        Placeholder cho các logic validation về tính nhất quán của các trường khác.
-        """
-        return ValidationResult.create_valid(
-            ValidationType.FIELD_CONSISTENCY,
-            "✅ Kiểm tra tính nhất quán các trường thành công (placeholder)"
-        )
-    
-    def run_validation(self, validation_type: ValidationType, **kwargs) -> ValidationResult:
-        """
-        Chạy một quy tắc validation cụ thể.
-        """
-        if validation_type in self.validation_rules:
-            return self.validation_rules[validation_type](**kwargs)
-        else:
-            return ValidationResult.create_error(
-                validation_type,
-                f"❌ Loại validation không xác định: {validation_type}"
-            )
-    
-    def run_all_validations(self, form_data: List[Dict], task_list: List[Dict], 
+    # [THAY ĐỔI] Signature của hàm chính đã thay đổi
+    def run_all_validations(self, approval_code: str, form_data: List[Dict], task_list: List[Dict], 
                            node_id: str) -> List[ValidationResult]:
         """
-        Chạy tất cả các validation rules đã được đăng ký.
+        Chạy tất cả các validation rules đã được đăng ký cho quy trình được chỉ định.
         """
-        print(f"🚀 Bắt đầu chạy tất cả validation cho node {node_id[:8]}...")
+        print(f"🚀 Bắt đầu chạy tất cả validation cho quy trình '{approval_code}'...")
         results = []
         
-        for validation_type in self.validation_rules.keys():
+        for validation_type, validation_func in self.validation_rules.items():
             print(f"▶️ Đang chạy: {validation_type.value}...")
-            # Sử dụng extend để xử lý việc một rule có thể trả về nhiều result
-            validation_func = self.validation_rules[validation_type]
             
-            # Cần kiểm tra xem hàm có trả về list hay không
-            # Vì các hàm khác vẫn trả về 1 result đơn lẻ
+            # [THAY ĐỔI] Truyền approval_code vào mỗi hàm validation
             result_or_list = validation_func(
+                approval_code=approval_code,
                 form_data=form_data,
                 task_list=task_list,
                 node_id=node_id
@@ -4711,7 +4664,7 @@ FILE: project_complete_info.txt
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-10-03 14:17:39
+Thời gian tạo: 2025-10-03 15:54:38
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -4800,10 +4753,10 @@ Thư mục gốc: d:\Atino\extension\webhook-server-approval
 --------------------------------------------------
 .gitignore (594 bytes)
 app\core\__init__.py (376 bytes)
-app\core\bootstrap\application.py (8435 bytes)
-app\core\config\__init__.py (271 bytes)
+app\core\bootstrap\application.py (8458 bytes)
+app\core\config\__init__.py (401 bytes)
 app\core\config\field_constants.py (1232 bytes)
-app\core\config\node_config.py (5382 bytes)
+app\core\config\node_config.py (6127 bytes)
 app\core\config\settings.py (3520 bytes)
 app\core\events\event_registry.py (2702 bytes)
 app\core\infrastructure\__init__.py (176 bytes)
@@ -4814,7 +4767,7 @@ app\core\models\event.py (899 bytes)
 app\core\models\response.py (1015 bytes)
 app\core\models\shared.py (553 bytes)
 app\core\routers\monitoring.py (1619 bytes)
-app\core\routers\webhook.py (2919 bytes)
+app\core\routers\webhook.py (3837 bytes)
 app\core\utils\__init__.py (332 bytes)
 app\core\utils\amount_detector.py (10162 bytes)
 app\core\utils\field_extractor.py (12805 bytes)
@@ -4828,26 +4781,26 @@ app\domains\notification\services\lark_webhook_service.py (12787 bytes)
 app\domains\notification\services\notification_coordinator.py (8726 bytes)
 app\domains\qr_generation\__init__.py (251 bytes)
 app\domains\qr_generation\handlers\__init__.py (82 bytes)
-app\domains\qr_generation\handlers\qr_event_handler.py (6616 bytes)
+app\domains\qr_generation\handlers\qr_event_handler.py (6006 bytes)
 app\domains\qr_generation\models\__init__.py (359 bytes)
 app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
 app\domains\qr_generation\services\__init__.py (214 bytes)
 app\domains\qr_generation\services\amount_detector.py (15034 bytes)
-app\domains\qr_generation\services\qr_processor.py (17581 bytes)
+app\domains\qr_generation\services\qr_processor.py (18979 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (10972 bytes)
+app\domains\validation\handlers\validation_event_handler.py (9192 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (15465 bytes)
+app\domains\validation\services\validation_service.py (9746 bytes)
 Dockerfile (1896 bytes)
 Get detail code.ipynb (10463 bytes)
-lark_events.csv (111947 bytes)
+lark_events.csv (112696 bytes)
 project_complete_info.txt (0 bytes)
 README.md (7974 bytes)
 requirements.txt (136 bytes)
@@ -5031,8 +4984,8 @@ class ApplicationBootstrap:
             print(f"   • Event bus: {handler_count} handlers đã đăng ký cho approval events")
             
             # Kiểm tra node configuration
-            from app.core.config.node_config import NODE_CONFIG
-            print(f"   • Cấu hình node: {len(NODE_CONFIG)} nodes đã được cấu hình")
+            from app.core.config.node_config import APPROVAL_WORKFLOWS
+            print(f"   • Cấu hình workflow: {len(APPROVAL_WORKFLOWS)} quy trình đã được cấu hình")
             
             # Kiểm tra các environment variables bắt buộc
             required_vars = ["LARK_APP_ID", "LARK_APP_SECRET"]
@@ -5086,17 +5039,24 @@ app_bootstrap = ApplicationBootstrap()
 FILE: app\core\config\__init__.py
 ============================================================
 from .settings import settings
-from .node_config import NODE_CONFIG, get_node_config, get_configured_node_ids
+from .node_config import (
+    APPROVAL_WORKFLOWS,
+    get_workflow_config,
+    get_field_mapping,
+    get_qr_trigger_config,
+    get_node_config
+)
 from .field_constants import FFN
 
 __all__ = [
     "settings", 
-    "NODE_CONFIG", 
-    "get_node_config", 
-    "get_configured_node_ids",
+    "APPROVAL_WORKFLOWS",
+    "get_workflow_config",
+    "get_field_mapping",
+    "get_qr_trigger_config",
+    "get_node_config",
     "FFN"
 ]
-
 ============================================================
 
 ============================================================
@@ -5136,121 +5096,148 @@ FILE: app\core\config\node_config.py
 ============================================================
 from .field_constants import FFN
 
-# Cấu hình chi tiết cho từng node trong approval workflow
-NODE_CONFIG = {
-    # Node trưởng phòng duyệt - Có thể detect cả advance và payment (Không bắt được node submit, node này luôn là node tiếp theo)
-    "30e5338b60587c64c7cef5f6a7211ccb": {
-        "name": "truong_phong_duyet",
-        "type": "dual_detection",                   # Loại node hỗ trợ cả advance và payment
-        "advance_field": FFN.ADVANCE_AMOUNT,        # Tên field chứa số tiền tạm ứng
-        "payment_field": FFN.PAYMENT_AMOUNT,        # Tên field chứa số tiền thanh toán
-        "strategy": "detect_both_fields",           # Strategy tự động detect loại QR dựa trên fields
-        "required_status": "PENDING",               # Status cần thiết để trigger QR generation
-        "description": "Trưởng phòng duyệt - Auto detect advance/payment"
-    },
-    
-    # Node thanh toán
-    "f23535375a26847ef71c1cbf0755f246": {
-        "name": "thanh_toan_sau_tam_ung", 
-        "type": "payment_only",                          # Loại node chỉ xử lý payment
-        "advance_field": None,                           # Không có field advance
-        "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,   # Field chứa số tiền cần thanh toán
-        "strategy": "payment_field_only",                # Strategy chỉ xử lý payment field
-        "required_status": "APPROVED",                   # Node này cần status APPROVED
-        
-        # Điều kiện bổ sung để trigger QR generation
-        "additional_conditions": [
-            {
-                "node_id": "ef83b231885a1a77658f32808a199764",  # Node tiếp theo
-                "required_status": "PENDING",                   # Node tiếp theo phải PENDING
-                "description": "Node tiếp theo phải PENDING"    # Mô tả điều kiện
+APPROVAL_WORKFLOWS = {
+    "FCF7110C-FA4B-42AA-93D2-209910F8A0B0": {
+        "name": "Quy trình thanh toán tổng hợp mới",
+        "nodes": {
+            "30e5338b60587c64c7cef5f6a7211ccb": {
+                "name": "truong_phong_duyet",
+                "type": "dual_detection",
+                "advance_field": FFN.ADVANCE_AMOUNT,
+                "payment_field": FFN.PAYMENT_AMOUNT,
+                "strategy": "detect_both_fields",
+                "required_status": "PENDING",
+                "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+            },
+            "f23535375a26847ef71c1cbf0755f246": {
+                "name": "thanh_toan_sau_tam_ung",
+                "type": "payment_only",
+                "advance_field": None,
+                "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,
+                "strategy": "payment_field_only",
+                "required_status": "APPROVED",
+                "additional_conditions": [
+                    {
+                        "node_id": "ef83b231885a1a77658f32808a199764",
+                        "required_status": "PENDING",
+                        "description": "Node tiếp theo phải PENDING"
+                    }
+                ],
+                "description": "Thanh toán sau tạm ứng - Payment only"
             }
-        ],
-        "description": "Thanh toán sau tạm ứng - Payment only (trigger on APPROVED + next node PENDING)"
+        },
+        "field_mappings": {
+            "bank_name": FFN.BANK_NAME,
+            "account_number": FFN.BANK_ACCOUNT_NUMBER,
+            "beneficiary_name": FFN.BENEFICIARY_NAME,
+            "accounting_advance_info": FFN.ACCOUNTING_ADVANCE_INFO,
+            "accounting_payment_info": FFN.ACCOUNTING_PAYMENT_INFO,
+            "expenditure_amount": FFN.EXPENDITURE_AMOUNT
+        },
+        "qr_trigger_nodes": [
+            {
+                "node_name_contains": "Thủ quỹ chi tiền tạm ứng",
+                "status": "PENDING",
+                "yes_no_field_template": "Thanh toán tạm ứng lần {i}: Y/N",
+                "amount_field_template": "Số tiền tạm ứng lần {i}:",
+                "qr_type": "advance"
+            }
+        ]
+    },
+    "FCF7110C-FA4B-42AA-93D2-209910F8A0B0": {
+        "name": "Quy trình thanh toán tổng hợp mới",
+        "nodes": {
+            "30e5338b60587c64c7cef5f6a7211ccb": {
+                "name": "truong_phong_duyet",
+                "type": "dual_detection",
+                "advance_field": FFN.ADVANCE_AMOUNT,
+                "payment_field": FFN.PAYMENT_AMOUNT,
+                "strategy": "detect_both_fields",
+                "required_status": "PENDING",
+                "description": "Trưởng phòng duyệt - Auto detect advance/payment"
+            },
+            "f23535375a26847ef71c1cbf0755f246": {
+                "name": "thanh_toan_sau_tam_ung",
+                "type": "payment_only",
+                "advance_field": None,
+                "payment_field": FFN.REMAINING_PAYMENT_AMOUNT,
+                "strategy": "payment_field_only",
+                "required_status": "APPROVED",
+                "additional_conditions": [
+                    {
+                        "node_id": "ef83b231885a1a77658f32808a199764",
+                        "required_status": "PENDING",
+                        "description": "Node tiếp theo phải PENDING"
+                    }
+                ],
+                "description": "Thanh toán sau tạm ứng - Payment only"
+            }
+        },
+        "field_mappings": {
+            "bank_name": FFN.BANK_NAME,
+            "account_number": FFN.BANK_ACCOUNT_NUMBER,
+            "beneficiary_name": FFN.BENEFICIARY_NAME,
+            "accounting_advance_info": FFN.ACCOUNTING_ADVANCE_INFO,
+            "accounting_payment_info": FFN.ACCOUNTING_PAYMENT_INFO,
+            "expenditure_amount": FFN.EXPENDITURE_AMOUNT
+        },
+        "qr_trigger_nodes": [
+            {
+                "node_name_contains": "Thủ quỹ chi tiền tạm ứng",
+                "status": "PENDING",
+                "yes_no_field_template": "Thanh toán tạm ứng lần {i}: Y/N",
+                "amount_field_template": "Số tiền tạm ứng lần {i}:",
+                "qr_type": "advance"
+            }
+        ]
     }
 }
 
 
-def get_node_config(node_id: str) -> dict:
+def get_workflow_config(approval_code: str) -> dict:
     """
-    Lấy configuration chi tiết cho một node_id cụ thể.
-    
-    Args:
-        node_id (str): Node ID cần lấy configuration
-        
-    Returns:
-        dict: Dictionary chứa cấu hình node bao gồm:
-            - name: Tên node
-            - type: Loại node (dual_detection, payment_only, etc.)
-            - advance_field: Tên field chứa số tiền tạm ứng
-            - payment_field: Tên field chứa số tiền thanh toán
-            - strategy: Chiến lược xử lý (detect_both_fields, payment_field_only, etc.)
-            - required_status: Status cần thiết để trigger
-            - additional_conditions: Các điều kiện bổ sung (optional)
-            - description: Mô tả node
-        Trả về None nếu không tìm thấy node_id
+    Lấy toàn bộ cấu hình cho một quy trình phê duyệt dựa trên approval_code.
     """
-    return NODE_CONFIG.get(node_id)
+    return APPROVAL_WORKFLOWS.get(approval_code)
 
-
-def get_node_strategy(node_id: str) -> str:
+def get_node_config(approval_code: str, node_id: str) -> dict:
     """
-    Lấy strategy xử lý của một node cụ thể.
-    
-    Args:
-        node_id (str): Node ID cần lấy strategy
-        
-    Returns:
-        str: Tên strategy của node như:
-            - "detect_both_fields": Tự động detect advance/payment
-            - "payment_field_only": Chỉ xử lý payment
-            - "unknown": Nếu không tìm thấy node hoặc strategy
+    Lấy cấu hình chi tiết cho một node_id cụ thể trong một quy trình.
     """
-    config = get_node_config(node_id)
-    return config.get("strategy", "unknown") if config else "unknown"
+    workflow = get_workflow_config(approval_code)
+    if workflow and 'nodes' in workflow:
+        return workflow['nodes'].get(node_id)
+    return None
 
-
-def print_node_config_summary():
+def get_field_mapping(approval_code: str, field_key: str) -> str:
     """
-    In ra tóm tắt chi tiết của NODE_CONFIG bao gồm additional conditions.
-    
-    Function này hiển thị thông tin tổng quan về tất cả nodes được cấu hình,
-    bao gồm strategy, fields, required status và các điều kiện bổ sung.
+    Lấy tên trường thực tế từ key logic cho một quy trình.
+    Ví dụ: get_field_mapping(code, "bank_name") -> "Ngân hàng"
     """
-    print("📋 Tóm tắt cấu hình NODE_CONFIG:")
-    
-    # Duyệt qua từng node trong configuration
-    for node_id, config in NODE_CONFIG.items():
-        required_status = config.get('required_status', 'PENDING')
-        additional_conditions = config.get('additional_conditions', [])
-        
-        # Hiển thị thông tin cơ bản của node
-        print(f"   • {node_id[:8]}... - {config['name']} ({config['strategy']})")
-        print(f"     Các trường: advance='{config['advance_field']}', payment='{config['payment_field']}'")
-        print(f"     Status yêu cầu: {required_status}")
-        
-        # Hiển thị các điều kiện bổ sung nếu có
-        if additional_conditions:
-            print(f"     Điều kiện bổ sung:")
-            for condition in additional_conditions:
-                condition_node_short = condition['node_id'][:8]
-                condition_status = condition['required_status']
-                print(f"       - {condition_node_short}... phải có status {condition_status}")
+    workflow = get_workflow_config(approval_code)
+    if workflow and 'field_mappings' in workflow:
+        return workflow['field_mappings'].get(field_key)
+    return None
 
-
-def get_configured_node_ids():
+def get_qr_trigger_config(approval_code: str) -> list:
     """
-    Lấy danh sách tất cả node IDs đã được cấu hình.
-    
-    Returns:
-        List[str]: Danh sách tất cả node IDs có trong NODE_CONFIG
+    Lấy danh sách các cấu hình kích hoạt tạo QR cho một quy trình.
     """
-    return list(NODE_CONFIG.keys())
+    workflow = get_workflow_config(approval_code)
+    if workflow:
+        return workflow.get('qr_trigger_nodes', [])
+    return []
 
-
-# Backward compatibility - Giữ lại tên cũ để không break existing code
-ALLOWED_NODE_IDS = get_configured_node_ids()
-
+def print_workflow_summary():
+    """
+    In ra tóm tắt cấu hình của tất cả các quy trình phê duyệt.
+    """
+    print("📋 Tóm tắt cấu hình APPROVAL_WORKFLOWS:")
+    for code, config in APPROVAL_WORKFLOWS.items():
+        print(f"\n Workflow: {config.get('name', 'N/A')} ({code})")
+        print(f"   - {len(config.get('nodes', {}))} nodes được cấu hình.")
+        print(f"   - {len(config.get('field_mappings', {}))} field mappings.")
+        print(f"   - {len(config.get('qr_trigger_nodes', []))} QR triggers.")
 ============================================================
 
 ============================================================
@@ -6274,10 +6261,12 @@ async def test_event_processing(instance_code: str):
 ============================================================
 FILE: app\core\routers\webhook.py
 ============================================================
+import json
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from app.core.infrastructure.event_bus import event_bus
-from app.core.utils.helpers import save_event_to_csv, get_event_type, extract_instance_code
+from app.core.utils.helpers import get_event_type, extract_instance_code
 from app.core.config.settings import settings
 
 router = APIRouter()
@@ -6290,7 +6279,6 @@ async def handle_lark_webhook(request: Request):
     Chức năng chính:
     - Nhận và xử lý các sự kiện webhook từ Lark
     - Xác thực URL verification cho webhook setup
-    - Lưu trữ tất cả events vào file CSV để audit
     - Xử lý các sự kiện phê duyệt qua event bus pattern
     - Trả về response phù hợp cho từng loại event
 
@@ -6305,6 +6293,17 @@ async def handle_lark_webhook(request: Request):
     """
     try:
         data = await request.json()
+
+        # =================================================================
+        # BẮT ĐẦU LOG DEBUG: In ra toàn bộ payload của webhook để kiểm tra
+        # =================================================================
+        print("👇----- [DEBUG] BẮT ĐẦU PAYLOAD WEBHOOK THÔ -----👇")
+        # Sử dụng json.dumps để in ra cấu trúc JSON đẹp mắt, dễ đọc
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print("👆----- [DEBUG] KẾT THÚC PAYLOAD WEBHOOK THÔ -----👆")
+        # =================================================================
+
+
         print(f"📨 Nhận được webhook: {get_event_type(data)}")
 
         # Xử lý xác thực URL khi setup webhook
@@ -6312,27 +6311,32 @@ async def handle_lark_webhook(request: Request):
             print("🔐 Đang xử lý URL verification")
             return JSONResponse(content={"challenge": data.get("challenge")})
 
-        print("💾 Đang lưu event vào CSV...")
-        await save_event_to_csv(data, settings.EVENTS_FILE)
-
         # Xử lý các sự kiện phê duyệt thông qua event bus
         event_type = get_event_type(data)
         if "approval" in event_type.lower():
             instance_code = extract_instance_code(data)
             if instance_code:
-                print(f"🔍 Đang xử lý instance phê duyệt: {instance_code}")
+                # Trích xuất approval_code để xác định quy trình
+                event_body = data.get("event", {})
+                approval_code = event_body.get("approval_code")
 
-                # Phát hành event qua event bus - sẽ kích hoạt tất cả handlers đã đăng ký
-                print("📡 Đang phát hành event qua event bus...")
-                await event_bus.publish("approval.instance.updated", {
-                    "instance_code": instance_code,
-                    "event_type": event_type,
-                    "timestamp": data.get("header", {}).get("create_time"),
-                    "raw_data": data
-                })
-                print("✅ Đã phát hành event thành công")
+                if approval_code:
+                    print(f"🔍 Đang xử lý instance: {instance_code} cho quy trình: {approval_code}")
+
+                    # Thêm approval_code vào payload của event bus
+                    print("📡 Đang phát hành event qua event bus...")
+                    await event_bus.publish("approval.instance.updated", {
+                        "instance_code": instance_code,
+                        "approval_code": approval_code,
+                        "event_type": event_type,
+                        "timestamp": data.get("header", {}).get("create_time"),
+                        "raw_data": data
+                    })
+                    print("✅ Đã phát hành event thành công")
+                else:
+                    print(f"⚠️ Không tìm thấy 'approval_code' trong event cho instance: {instance_code}. Bỏ qua.")
             else:
-                print("⚠️ Không tìm thấy instance code trong event phê duyệt")
+                print("⚠️ Không tìm thấy 'instance_code' trong event phê duyệt.")
 
         print("🎉 Xử lý webhook hoàn tất")
         return JSONResponse(content={"status": "success", "architecture": "DDD"})
@@ -7582,7 +7586,7 @@ class QREventHandler:
     
     Quy trình xử lý:
     1. Nhận sự kiện phê duyệt từ hệ thống
-    2. Trích xuất instance_code từ event data
+    2. Trích xuất instance_code và approval_code từ event data
     3. Lấy access token để gọi Lark API
     4. Gửi đến QRProcessor để xử lý tạo QR
     5. Trả về kết quả xử lý
@@ -7599,34 +7603,21 @@ class QREventHandler:
         """
         Xử lý sự kiện phê duyệt để tạo mã QR tự động.
         
-        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
-        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
-        
-        Đây là method chính của handler, hoạt động hoàn toàn độc lập
-        và không phụ thuộc vào các service khác. Method sẽ:
-        
-        1. Validate dữ liệu đầu vào (instance_code)
-        2. Lấy access token từ Lark service
-        3. Gọi QRProcessor để xử lý business logic
-        4. Trả về kết quả chi tiết cho monitoring
+        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn và nhận diện quy trình
+        qua approval_code.
         
         Args:
             event_data (Dict): Dữ liệu sự kiện chứa thông tin phê duyệt.
-                             Bắt buộc phải có 'instance_code'
+                             Bắt buộc phải có 'instance_code' và 'approval_code'.
         
         Returns:
-            Dict: Kết quả xử lý bao gồm:
-                - success (bool): Trạng thái xử lý thành công
-                - message (str): Thông báo chi tiết kết quả
-                - instance_code (str): Mã instance đã xử lý (nếu có)
-                - service (str): Tên service thực hiện
-        
-        Raises:
-            Exception: Các lỗi không xác định sẽ được bắt và trả về trong response
+            Dict: Kết quả xử lý chi tiết.
         """
         try:
-            # Bước 1: Validate và trích xuất instance_code từ event data
+            # [THAY ĐỔI] Trích xuất cả instance_code và approval_code từ event
             instance_code = event_data.get('instance_code')
+            approval_code = event_data.get('approval_code')
+
             if not instance_code:
                 print(f"❌ [QR Handler] Thiếu instance_code trong dữ liệu sự kiện")
                 return {
@@ -7635,27 +7626,34 @@ class QREventHandler:
                     "service": self.name
                 }
             
-            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
-            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
+            # [THÊM MỚI] Kiểm tra sự tồn tại của approval_code
+            if not approval_code:
+                print(f"❌ [QR Handler] Thiếu approval_code trong dữ liệu sự kiện cho instance: {instance_code}")
+                return {
+                    "success": False,
+                    "message": "Không tìm thấy approval_code trong dữ liệu sự kiện",
+                    "instance_code": instance_code,
+                    "service": self.name
+                }
 
-            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            # Logic kiểm tra trạng thái đơn (giữ nguyên)
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
             
-            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [QR Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
                 return {
-                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "success": True,
                     "message": f"Bỏ qua xử lý do trạng thái đơn là {instance_status}",
                     "instance_code": instance_code,
                     "service": self.name
                 }
-            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
             
-            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
+            # [THAY ĐỔI] Cập nhật log để hiển thị cả approval_code
+            print(f"🏦 [QR Handler] Dịch vụ QR đang xử lý instance: {instance_code} (Workflow: {approval_code})")
             
-            # Bước 2: Lấy access token để gọi Lark API
+            # Lấy access token (giữ nguyên)
             print(f"🔑 Đang lấy access token từ Lark...")
             access_token = await lark_service.get_access_token()
             if not access_token:
@@ -7668,13 +7666,13 @@ class QREventHandler:
             
             print(f"✅ Đã lấy access token thành công")
             
-            # Bước 3: Gửi đến QRProcessor để xử lý business logic chính
+            # [THAY ĐỔI] Truyền approval_code vào service xử lý logic nghiệp vụ
             print(f"⚙️ Bắt đầu xử lý tạo QR cho {instance_code}...")
             result = await qr_processor.process_approval_with_qr_comment(
-                instance_code, access_token
+                instance_code, approval_code, access_token
             )
             
-            # Bước 4: Tạo response với thông tin chi tiết
+            # Xử lý kết quả trả về (giữ nguyên)
             if result:
                 print(f"✅ [QR Handler] Hoàn thành xử lý QR cho {instance_code}")
                 return {
@@ -7693,7 +7691,7 @@ class QREventHandler:
                 }
             
         except Exception as e:
-            # Bắt tất cả exception không xác định để tránh crash service
+            # Xử lý lỗi (giữ nguyên)
             print(f"❌ Lỗi không xác định trong QR Service: {str(e)}")
             import traceback
             print(f"📋 Chi tiết lỗi:\n{traceback.format_exc()}")
@@ -8178,147 +8176,29 @@ FILE: app\domains\qr_generation\services\qr_processor.py
 ============================================================
 import json
 from app.core.config.settings import settings
-# NODE_CONFIG và AmountDetector không còn cần thiết cho logic chính, nhưng giữ lại import để không ảnh hưởng các hàm phụ
-from app.core.config.node_config import NODE_CONFIG
-from app.core.config.field_constants import FFN
+# [THAY ĐỔI] Import các hàm helper mới từ node_config
+from app.core.config.node_config import get_workflow_config, get_field_mapping, get_qr_trigger_config
 from app.core.infrastructure.lark_service import lark_service
 from app.core.infrastructure.cache_service import cache_service
 from app.core.utils.field_extractor import FieldExtractor
 from app.domains.qr_generation.services.vietqr_service import vietqr_service
-# AmountDetector không còn được sử dụng trong hàm chính nữa
-# from app.domains.qr_generation.services.amount_detector import AmountDetector
 from app.domains.qr_generation.models import QRType, BankInfo
+from typing import Dict, Any
 
 class QRProcessor:
     """
     Bộ xử lý QR chính - Quản lý logic nghiệp vụ tạo và xử lý mã QR cho hệ thống phê duyệt.
     
-    Class này xử lý toàn bộ quy trình từ việc kiểm tra node phê duyệt, trích xuất dữ liệu,
-    validate thông tin, tạo mã VietQR và upload lên hệ thống Lark.
+    [NÂNG CẤP] Class này giờ đây đọc cấu hình động từ APPROVAL_WORKFLOWS để hỗ trợ
+    nhiều quy trình phê duyệt khác nhau.
     
     Attributes:
-        field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
+        field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form.
     """
 
     def __init__(self):
         """Khởi tạo QRProcessor với các service cần thiết."""
         self.field_extractor = FieldExtractor()
-        # self.amount_detector không còn cần thiết nữa
-        # self.amount_detector = AmountDetector()
-
-    # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
-    def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
-        """
-        Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
-        (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
-        """
-        if node_config is None:
-            node_config = NODE_CONFIG
-        # ... logic của hàm cũ giữ nguyên ...
-        try:
-            # Trích xuất dữ liệu từ API response
-            data = api_response.get('data', {})
-            task_list = data.get('task_list', [])
-            configured_node_ids = list(node_config.keys())
-            
-            # Tạo map để tra cứu nhanh trạng thái của các node
-            node_status_map = {}
-            for task in task_list:
-                node_id = task.get('node_id')
-                status = task.get('status', 'UNKNOWN')
-                if node_id:
-                    node_status_map[node_id] = status
-            
-            print(f"🔍 Đang kiểm tra các node với điều kiện bổ sung:")
-            for node_id, config in node_config.items():
-                required_status = config.get('required_status', 'PENDING')
-                additional_conditions = config.get('additional_conditions', [])
-                print(f"   • {node_id[:8]}... - {config['name']} (yêu cầu: {required_status})")
-                if additional_conditions:
-                    for condition in additional_conditions:
-                        print(f"     + Điều kiện thêm: {condition['node_id'][:8]}... phải ở trạng thái {condition['required_status']}")
-            
-            print(f"📋 Danh sách task chứa {len(task_list)} nhiệm vụ")
-            
-            matching_configured_nodes = []
-            
-            # Duyệt qua từng node đã cấu hình
-            for node_id in configured_node_ids:
-                config = node_config[node_id]
-                required_status = config.get('required_status', 'PENDING')
-                current_status = node_status_map.get(node_id, 'NOT_FOUND')
-                
-                # Kiểm tra điều kiện chính
-                if current_status != required_status:
-                    continue
-                    
-                # Kiểm tra các điều kiện bổ sung
-                additional_conditions = config.get('additional_conditions', [])
-                all_conditions_met = True
-                
-                for condition in additional_conditions:
-                    condition_node_id = condition['node_id']
-                    condition_required_status = condition['required_status']
-                    condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
-                    
-                    print(f"🔍 Kiểm tra điều kiện bổ sung: {condition_node_id[:8]}... ")
-                    print(f"   Yêu cầu: {condition_required_status}, Hiện tại: {condition_current_status}")
-                    
-                    if condition_current_status != condition_required_status:
-                        all_conditions_met = False
-                        print(f"❌ Điều kiện bổ sung không đáp ứng cho {node_id[:8]}...")
-                        break
-                    else:
-                        print(f"✅ Điều kiện bổ sung đã đáp ứng")
-                
-                # Nếu tất cả điều kiện đều thỏa mãn
-                if all_conditions_met:
-                    matching_configured_nodes.append({
-                        'node_id': node_id,
-                        'config': config,
-                        'strategy': config['strategy'],
-                        'matched_status': current_status,
-                        'required_status': required_status,
-                        'additional_conditions_met': True
-                    })
-                    print(f"✅ Tìm thấy node phù hợp: {node_id[:8]}... ({config['name']}) - Trạng thái: {current_status}")
-            
-            # Trả về node phù hợp đầu tiên
-            if matching_configured_nodes:
-                first_matching = matching_configured_nodes[0]
-                return {
-                    'found': True,
-                    'node_id': first_matching['node_id'],
-                    'node_config': first_matching['config'],
-                    'strategy': first_matching['strategy'],
-                    'matched_status': first_matching['matched_status'],
-                    'required_status': first_matching['required_status'],
-                    'all_tasks': task_list,
-                    'all_matching_configured': matching_configured_nodes,
-                    'node_status_map': node_status_map
-                }
-            else:
-                print(f"❌ Không tìm thấy node nào đáp ứng tất cả điều kiện")
-                return {
-                    'found': False,
-                    'node_id': None,
-                    'node_config': None,
-                    'strategy': None,
-                    'matched_status': None,
-                    'all_tasks': task_list,
-                    'all_matching_configured': [],
-                    'node_status_map': node_status_map
-                }
-            
-        except Exception as e:
-            print(f"❌ Lỗi khi kiểm tra node: {e}")
-            return {
-                'found': False,
-                'error': str(e),
-                'all_tasks': [],
-                'all_matching_configured': []
-            }
-
 
     def validate_amount_value(self, amount_value) -> dict:
         """
@@ -8339,78 +8219,104 @@ class QRProcessor:
         except (ValueError, TypeError) as e:
             return {'valid': False, 'amount': None, 'error': f'Định dạng số tiền không hợp lệ: {str(e)}'}
 
-    async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
+    def _find_active_qr_trigger(self, task_list: list, form_data: list, qr_trigger_configs: list) -> Dict[str, Any]:
         """
-        Xử lý phê duyệt với tạo QR code và comment (phiên bản nâng cấp hỗ trợ nhiều lần tạm ứng).
+        [HÀM MỚI] Tìm kiếm node đang hoạt động khớp với các điều kiện trong cấu hình qr_trigger_nodes.
+        """
+        # Tạo một map để tra cứu các node theo tên
+        nodes_by_name = {}
+        for task in task_list:
+            node_name = task.get('node_name', '')
+            if node_name not in nodes_by_name:
+                nodes_by_name[node_name] = []
+            nodes_by_name[node_name].append(task)
+            
+        # Duyệt qua từng cấu hình trigger (ví dụ: một cho tạm ứng, một cho thanh toán)
+        for trigger_config in qr_trigger_configs:
+            node_name_contains = trigger_config.get("node_name_contains")
+            required_status = trigger_config.get("status")
+
+            # Tìm tất cả các node có tên khớp với cấu hình
+            matching_nodes = []
+            for name, nodes in nodes_by_name.items():
+                if node_name_contains in name:
+                    matching_nodes.extend(nodes)
+
+            print(f"🔍 Tìm thấy {len(matching_nodes)} node có tên chứa '{node_name_contains}'.")
+
+            # Lặp qua các node đã tìm thấy để kiểm tra điều kiện
+            for i, node in enumerate(matching_nodes, 1):
+                node_id = node.get('node_id')
+                node_status = node.get('status')
+                print(f"   - Kiểm tra lần {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+
+                if node_status == required_status:
+                    # Lấy template từ config để tạo tên trường động
+                    yes_no_field_template = trigger_config.get("yes_no_field_template")
+                    amount_field_template = trigger_config.get("amount_field_template")
+
+                    yes_no_field_name = yes_no_field_template.format(i=i)
+                    amount_field_name = amount_field_template.format(i=i)
+
+                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
+                    
+                    if yes_no_value == "Yes":
+                        print(f"     ✅ Điều kiện thỏa mãn: Node {required_status} và người dùng chọn 'Yes'.")
+                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
+                        
+                        return {
+                            "amount": amount_value,
+                            "node_id": node_id,
+                            "node_name": node.get('node_name'),
+                            "qr_type": trigger_config.get("qr_type", "unknown"),
+                            "field_used": amount_field_name,
+                            "trigger_round": i
+                        }
+                    else:
+                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
+                else:
+                    print(f"     - Bỏ qua: Trạng thái node không phải {required_status}.")
+
+        return None # Không tìm thấy trigger nào hoạt động
+
+    # [THAY ĐỔI] Signature của hàm đã thay đổi để nhận approval_code
+    async def process_approval_with_qr_comment(self, instance_code: str, approval_code: str, access_token: str) -> bool:
+        """
+        [NÂNG CẤP] Xử lý phê duyệt bằng cách đọc cấu hình động dựa trên approval_code.
         """
         try:
-            # Bước 1: Lấy thông tin chi tiết của instance
+            # Bước 1: Lấy cấu hình cho quy trình hiện tại
+            workflow_config = get_workflow_config(approval_code)
+            if not workflow_config:
+                print(f"❌ Không tìm thấy cấu hình cho quy trình '{approval_code}'. Bỏ qua.")
+                return True # Coi như thành công vì không có gì để làm
+
+            print(f"⚙️ Áp dụng cấu hình cho quy trình: {workflow_config.get('name')}")
+
+            # Bước 2: Lấy thông tin chi tiết của instance
             api_response = await lark_service.get_approval_instance(instance_code, access_token)
             if not api_response or 'data' not in api_response:
                 print(f"❌ Không thể lấy thông tin instance {instance_code}")
                 return False
             
             task_list = api_response['data'].get('task_list', [])
-            form_str = api_response['data'].get('form', '[]')
-            form_data = json.loads(form_str)
+            form_data = json.loads(api_response['data'].get('form', '[]'))
 
-            # --- [LOGIC MỚI] Bắt đầu phần tìm kiếm lần tạm ứng hoạt động ---
-            
-            # 2.1: Tìm tất cả các node "Thủ quỹ chi tiền tạm ứng" trong quy trình
-            cashier_nodes = [task for task in task_list if "Thủ quỹ chi tiền tạm ứng" in task.get('node_name', '')]
-            print(f"🔍 Tìm thấy {len(cashier_nodes)} node 'Thủ quỹ chi tiền tạm ứng' trong quy trình.")
+            # Bước 3: [LOGIC MỚI] Tìm node đang hoạt động dựa trên cấu hình
+            qr_trigger_configs = workflow_config.get('qr_trigger_nodes', [])
+            active_trigger_info = self._find_active_qr_trigger(task_list, form_data, qr_trigger_configs)
 
-            active_advance_info = None
-            
-            # 2.2: Lặp qua các node thủ quỹ để tìm node đang PENDING
-            for i, node in enumerate(cashier_nodes, 1):
-                node_id = node.get('node_id')
-                node_status = node.get('status')
-                print(f"   - Kiểm tra lần tạm ứng {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+            if not active_trigger_info:
+                print(f"⏭️ Không có trigger tạo QR nào đang hoạt động cho instance {instance_code}. Bỏ qua.")
+                return True
 
-                # Điều kiện 1: Node phải ở trạng thái PENDING
-                if node_status == 'PENDING':
-                    # Điều kiện 2: Người dùng phải chọn "Yes" cho lần tạm ứng tương ứng
-                    yes_no_field_name = f"Thanh toán tạm ứng lần {i}: Y/N"
-                    amount_field_name = f"Số tiền tạm ứng lần {i}:"
-
-                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
-                    
-                    if yes_no_value == "Yes":
-                        print(f"     ✅ Điều kiện thỏa mãn: Node PENDING và người dùng chọn 'Yes'.")
-                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
-                        
-                        active_advance_info = {
-                            "amount": amount_value,
-                            "node_id": node_id,
-                            "node_name": node.get('node_name'),
-                            "qr_type": "advance",
-                            "field_used": amount_field_name,
-                            "advance_round": i
-                        }
-                        print(f"     ➡️ Lần tạm ứng {i} được kích hoạt với số tiền: {amount_value}")
-                        break # Tìm thấy rồi thì dừng lại
-                    else:
-                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
-                else:
-                    print(f"     - Bỏ qua: Trạng thái node không phải PENDING.")
-
-            # 2.3: Xử lý kết quả tìm kiếm
-            if not active_advance_info:
-                print(f"⏭️  Không có lần tạm ứng nào đang hoạt động (PENDING và được chọn 'Yes'). Bỏ qua tạo QR.")
-                return True # Coi như thành công vì đã xử lý đúng (bỏ qua)
-
-            # --- [LOGIC MỚI] Kết thúc phần tìm kiếm ---
-
-
-            # --- [PHẦN GIỮ NGUYÊN] Tiếp tục xử lý với thông tin đã tìm được ---
-
-            # Lấy các biến từ kết quả tìm kiếm
-            matching_node_id = active_advance_info['node_id']
-            qr_type = active_advance_info['qr_type']
-            amount_value = active_advance_info['amount']
-            field_used = active_advance_info['field_used']
-            node_name = active_advance_info['node_name']
+            # Bước 4: Trích xuất thông tin từ trigger đã tìm thấy
+            matching_node_id = active_trigger_info['node_id']
+            qr_type = active_trigger_info['qr_type']
+            amount_value = active_trigger_info['amount']
+            field_used = active_trigger_info['field_used']
+            node_name = active_trigger_info['node_name']
+            trigger_round = active_trigger_info['trigger_round']
             
             # Bước 5: Kiểm tra duplicate TRƯỚC KHI tạo QR
             if cache_service.is_qr_recently_generated(
@@ -8418,10 +8324,9 @@ class QRProcessor:
                 settings.QR_CACHE_DURATION_MINUTES
             ):
                 print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_name} đã được tạo gần đây.")
-                print(f"   → BỎ QUA tạo QR để tránh trùng lặp.")
                 return True
             
-            print(f"💰 Chi tiết tạo QR cho lần tạm ứng {active_advance_info['advance_round']}:")
+            print(f"💰 Chi tiết tạo QR cho lần {trigger_round}:")
             print(f"   - Loại: {qr_type}")
             print(f"   - Số tiền: {amount_value}")
             print(f"   - Trường sử dụng: {field_used}")
@@ -8432,60 +8337,55 @@ class QRProcessor:
             if not amount_validation['valid']:
                 print(f"❌ Số tiền không hợp lệ: {amount_validation['error']}")
                 return False
-                
             amount_int = amount_validation['amount']
 
-            # Bước 7: Trích xuất thông tin ngân hàng
-            bank_id = self.field_extractor.extract_field_value(form_data, FFN.BANK_NAME)
-            account_no = self.field_extractor.extract_field_value(form_data, FFN.BANK_ACCOUNT_NUMBER)
-            account_name = self.field_extractor.extract_field_value(form_data, FFN.BENEFICIARY_NAME)
+            # Bước 7: [LOGIC MỚI] Trích xuất thông tin ngân hàng từ field_mappings
+            field_mappings = workflow_config.get('field_mappings', {})
+            bank_id_field = field_mappings.get('bank_name')
+            account_no_field = field_mappings.get('account_number')
+            account_name_field = field_mappings.get('beneficiary_name')
+
+            if not all([bank_id_field, account_no_field, account_name_field]):
+                 print(f"❌ Lỗi cấu hình: Thiếu 'bank_name', 'account_number', hoặc 'beneficiary_name' trong field_mappings của quy trình {approval_code}.")
+                 return False
+
+            bank_id = self.field_extractor.extract_field_value(form_data, bank_id_field)
+            account_no = self.field_extractor.extract_field_value(form_data, account_no_field)
+            account_name = self.field_extractor.extract_field_value(form_data, account_name_field)
 
             if not all([bank_id, account_no, account_name]):
-                missing = [f for f, v in {FFN.BANK_NAME: bank_id, FFN.BANK_ACCOUNT_NUMBER: account_no, FFN.BENEFICIARY_NAME: account_name}.items() if not v]
-                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing)}")
+                missing = [f for f, v in {bank_id_field: bank_id, account_no_field: account_no, account_name_field: account_name}.items() if not v]
+                print(f"❌ Thiếu thông tin ngân hàng trên form: {', '.join(missing)}")
                 return False
             
-            # Bước 8: Tạo mô tả QR theo loại
-            description = vietqr_service.generate_qr_description(f"{qr_type}{active_advance_info['advance_round']}", instance_code)
+            # Bước 8: Tạo mô tả QR
+            description = vietqr_service.generate_qr_description(f"{qr_type}{trigger_round}", instance_code)
             
-            print(f"🏦 Tạo VietQR với thông tin:")
-            print(f"   - Ngân hàng: {bank_id}")
-            print(f"   - Số tài khoản: {account_no}")
-            print(f"   - Tên người nhận: {account_name}")
-            print(f"   - Số tiền: {amount_int:,} VND")
-            print(f"   - Mô tả: {description}")
-            
-            # Bước 9: Tạo VietQR code trong bộ nhớ
+            # Bước 9: Tạo VietQR code
             qr_image_buffer = vietqr_service.create_qr_in_memory(
-                bank_id=bank_id,
-                account_no=account_no,
-                amount=amount_int,
-                description=description,
-                account_name=account_name
+                bank_id, account_no, amount_int, description, account_name
             )
-            
             if not qr_image_buffer:
                 print("❌ Không thể tạo mã VietQR")
                 return False
             
-            # Bước 10: Upload ảnh lên Lark Approval
-            filename = f"{instance_code}_{qr_type}{active_advance_info['advance_round']}_qr.png"
+            # Bước 10: Upload ảnh lên Lark
+            filename = f"{instance_code}_{qr_type}{trigger_round}_qr.png"
             upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
-            
             if not upload_result['success']:
                 print(f"❌ Upload thất bại: {upload_result['error']}")
                 return False
             
-            # Bước 11: Đánh dấu đã tạo QR SAU KHI upload thành công
+            # Bước 11: Đánh dấu đã tạo QR
             cache_service.mark_qr_as_generated(instance_code, matching_node_id, qr_type)
             
-            # Bước 12: Tạo comment nâng cao với thông tin chi tiết
+            # Bước 12: Tạo comment
             comment_result = await lark_service.create_enhanced_comment_with_image(
                 instance_code=instance_code,
                 file_url=upload_result['file_url'],
                 file_code=upload_result['file_code'],
                 filename=filename,
-                qr_type=f"{qr_type} Lần {active_advance_info['advance_round']}", # Làm rõ hơn trong comment
+                qr_type=f"{qr_type.capitalize()} Lần {trigger_round}",
                 amount=amount_int,
                 node_name=node_name,
                 access_token=access_token
@@ -8493,22 +8393,160 @@ class QRProcessor:
             
             if comment_result['success']:
                 print(f"✅ Hoàn thành xử lý phê duyệt {instance_code}")
-                print(f"💰 Loại: {qr_type.upper()} LẦN {active_advance_info['advance_round']} | Số tiền: {amount_int:,} VND")
-                print(f"🏷️ Node: {node_name}")
-                print(f"📋 Trường: {field_used}")
-                print(f"💬 ID Comment: {comment_result['comment_id']}")
                 return True
             else:
                 print(f"❌ Tạo comment thất bại: {comment_result['error']}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Lỗi xử lý phê duyệt: {e}")
+            print(f"❌ Lỗi nghiêm trọng khi xử lý phê duyệt: {e}")
             import traceback
             traceback.print_exc()
             return False
 
 qr_processor = QRProcessor()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# class QRProcessor:
+#     """
+#     Bộ xử lý QR chính - Quản lý logic nghiệp vụ tạo và xử lý mã QR cho hệ thống phê duyệt.
+    
+#     Class này xử lý toàn bộ quy trình từ việc kiểm tra node phê duyệt, trích xuất dữ liệu,
+#     validate thông tin, tạo mã VietQR và upload lên hệ thống Lark.
+    
+#     Attributes:
+#         field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
+#     """
+
+#     def __init__(self):
+#         """Khởi tạo QRProcessor với các service cần thiết."""
+#         self.field_extractor = FieldExtractor()
+#         # self.amount_detector không còn cần thiết nữa
+#         # self.amount_detector = AmountDetector()
+
+#     # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
+#     def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
+#         """
+#         Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
+#         (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
+#         """
+#         if node_config is None:
+#             node_config = NODE_CONFIG
+#         # ... logic của hàm cũ giữ nguyên ...
+#         try:
+#             # Trích xuất dữ liệu từ API response
+#             data = api_response.get('data', {})
+#             task_list = data.get('task_list', [])
+#             configured_node_ids = list(node_config.keys())
+            
+#             # Tạo map để tra cứu nhanh trạng thái của các node
+#             node_status_map = {}
+#             for task in task_list:
+#                 node_id = task.get('node_id')
+#                 status = task.get('status', 'UNKNOWN')
+#                 if node_id:
+#                     node_status_map[node_id] = status
+            
+#             print(f"🔍 Đang kiểm tra các node với điều kiện bổ sung:")
+#             for node_id, config in node_config.items():
+#                 required_status = config.get('required_status', 'PENDING')
+#                 additional_conditions = config.get('additional_conditions', [])
+#                 print(f"   • {node_id[:8]}... - {config['name']} (yêu cầu: {required_status})")
+#                 if additional_conditions:
+#                     for condition in additional_conditions:
+#                         print(f"     + Điều kiện thêm: {condition['node_id'][:8]}... phải ở trạng thái {condition['required_status']}")
+            
+#             print(f"📋 Danh sách task chứa {len(task_list)} nhiệm vụ")
+            
+#             matching_configured_nodes = []
+            
+#             # Duyệt qua từng node đã cấu hình
+#             for node_id in configured_node_ids:
+#                 config = node_config[node_id]
+#                 required_status = config.get('required_status', 'PENDING')
+#                 current_status = node_status_map.get(node_id, 'NOT_FOUND')
+                
+#                 # Kiểm tra điều kiện chính
+#                 if current_status != required_status:
+#                     continue
+                    
+#                 # Kiểm tra các điều kiện bổ sung
+#                 additional_conditions = config.get('additional_conditions', [])
+#                 all_conditions_met = True
+                
+#                 for condition in additional_conditions:
+#                     condition_node_id = condition['node_id']
+#                     condition_required_status = condition['required_status']
+#                     condition_current_status = node_status_map.get(condition_node_id, 'NOT_FOUND')
+                    
+#                     print(f"🔍 Kiểm tra điều kiện bổ sung: {condition_node_id[:8]}... ")
+#                     print(f"   Yêu cầu: {condition_required_status}, Hiện tại: {condition_current_status}")
+                    
+#                     if condition_current_status != condition_required_status:
+#                         all_conditions_met = False
+#                         print(f"❌ Điều kiện bổ sung không đáp ứng cho {node_id[:8]}...")
+#                         break
+#                     else:
+#                         print(f"✅ Điều kiện bổ sung đã đáp ứng")
+                
+#                 # Nếu tất cả điều kiện đều thỏa mãn
+#                 if all_conditions_met:
+#                     matching_configured_nodes.append({
+#                         'node_id': node_id,
+#                         'config': config,
+#                         'strategy': config['strategy'],
+#                         'matched_status': current_status,
+#                         'required_status': required_status,
+#                         'additional_conditions_met': True
+#                     })
+#                     print(f"✅ Tìm thấy node phù hợp: {node_id[:8]}... ({config['name']}) - Trạng thái: {current_status}")
+            
+#             # Trả về node phù hợp đầu tiên
+#             if matching_configured_nodes:
+#                 first_matching = matching_configured_nodes[0]
+#                 return {
+#                     'found': True,
+#                     'node_id': first_matching['node_id'],
+#                     'node_config': first_matching['config'],
+#                     'strategy': first_matching['strategy'],
+#                     'matched_status': first_matching['matched_status'],
+#                     'required_status': first_matching['required_status'],
+#                     'all_tasks': task_list,
+#                     'all_matching_configured': matching_configured_nodes,
+#                     'node_status_map': node_status_map
+#                 }
+#             else:
+#                 print(f"❌ Không tìm thấy node nào đáp ứng tất cả điều kiện")
+#                 return {
+#                     'found': False,
+#                     'node_id': None,
+#                     'node_config': None,
+#                     'strategy': None,
+#                     'matched_status': None,
+#                     'all_tasks': task_list,
+#                     'all_matching_configured': [],
+#                     'node_status_map': node_status_map
+#                 }
+            
+#         except Exception as e:
+#             print(f"❌ Lỗi khi kiểm tra node: {e}")
+#             return {
+#                 'found': False,
+#                 'error': str(e),
+#                 'all_tasks': [],
+#                 'all_matching_configured': []
+#             }
 ============================================================
 
 ============================================================
@@ -8732,52 +8770,43 @@ class ValidationEventHandler:
         """
         Xử lý sự kiện phê duyệt để thực hiện validation với cơ chế anti-spam nâng cao.
 
-        [NÂNG CẤP] Bổ sung logic kiểm tra trạng thái đơn. Sẽ bỏ qua xử lý
-        nếu đơn ở trạng thái cuối cùng như REJECTED, CANCELED, DELETED.
-        
-        Quy trình xử lý mới:
-        1. Lấy dữ liệu instance từ Lark.
-        2. Chạy tất cả các validation rules.
-        3. Lọc ra các kết quả không hợp lệ (invalid).
-        4. **[LOGIC MỚI]** Lặp qua từng lỗi không hợp lệ:
-            a. Dùng `validation_type` cụ thể của lỗi để kiểm tra cache.
-            b. Nếu lỗi chưa được cache, thêm nó vào danh sách cần gửi cảnh báo.
-        5. Nếu có lỗi cần cảnh báo, gửi một webhook duy nhất chứa tất cả các lỗi mới.
-        6. **[LOGIC MỚI]** Sau khi gửi, ghi cache cho từng loại lỗi đã được cảnh báo.
+        [NÂNG CẤP] Bổ sung logic nhận diện quy trình qua approval_code.
         """
         instance_code = event_data.get('instance_code')
+        approval_code = event_data.get('approval_code')
+
         if not instance_code:
             return {"success": False, "message": "Không tìm thấy instance_code", "service": self.name}
+        
+        if not approval_code:
+            return {
+                "success": False, 
+                "message": f"Không tìm thấy approval_code cho instance {instance_code}", 
+                "service": self.name
+            }
 
         try:
-            # [THÊM MỚI] Bắt đầu khối logic kiểm tra trạng thái
-            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
 
-            # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
+            FINAL_STATUSES = ['REJECTED', 'CANCELED', 'DELETED']
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
-
-            # Nếu không có trong payload, thì tìm trong event body
             event_body = raw_data.get('event', {})
             if not instance_status:
                 instance_status = event_body.get('status')
 
-
-            # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
                 return {
-                    "success": True, # Coi như thành công vì đã xử lý đúng (bỏ qua)
+                    "success": True,
                     "message": f"Bỏ qua validation do trạng thái đơn là {instance_status}",
                     "instance_code": instance_code,
-                    "webhook_sent": False, # Không có webhook nào được gửi
+                    "webhook_sent": False,
                     "service": self.name
                 }
-            # [THÊM MỚI] Kết thúc khối logic kiểm tra trạng thái
-
-            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Trạng thái: {instance_status or 'N/A'})")
             
-            # Bước 1 & 2: Lấy dữ liệu từ Lark
+            print(f"🔍 [Validation Handler] Dịch vụ Validation đang xử lý: {instance_code} (Workflow: {approval_code})")
+            
+            # Lấy dữ liệu từ Lark (giữ nguyên)
             access_token = await lark_service.get_access_token()
             if not access_token:
                 return {"success": False, "message": "Không thể lấy access token", "service": self.name}
@@ -8790,9 +8819,11 @@ class ValidationEventHandler:
             form_data = json.loads(api_response['data'].get('form', '[]'))
             task_list = api_response['data'].get('task_list', [])
             
-            # Bước 3: Chạy validations và lọc ra các lỗi
             validation_results = validation_service.run_all_validations(
-                form_data, task_list, "dummy_node_id" # node_id có thể cần được truyền vào từ event_data nếu logic yêu cầu
+                approval_code=approval_code, # <-- Tham số mới
+                form_data=form_data, 
+                task_list=task_list, 
+                node_id="dummy_node_id" 
             )
             invalid_results = [r for r in validation_results if not r.is_valid]
             
@@ -8804,27 +8835,22 @@ class ValidationEventHandler:
                     "service": self.name
                 }
             
-            # --- PHẦN LOGIC ANTI-SPAM ĐƯỢC THAY THẾ HOÀN TOÀN ---
-            # Bước 4: Lọc ra các cảnh báo chưa được gửi (chưa có trong cache)
             alerts_to_send = []
             skipped_count = 0
             
             print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                # TẠO CACHE KEY CỤ THỂ CHO TỪNG LỖI
-                # Dùng hash của message để đảm bảo mỗi lỗi là duy nhất
                 specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                 
                 if cache_service.is_validation_alert_recently_sent(
                     instance_code, specific_error_key, cache_duration_minutes=10
                 ):
-                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...") # Log một phần message
+                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...")
                     skipped_count += 1
                 else:
                     print(f"  🆕 Cần gửi cảnh báo cho: {result.message[:80]}...")
                     alerts_to_send.append(result)
 
-            # Bước 5: Gửi webhook nếu có cảnh báo mới cần gửi
             webhook_sent = False
             if alerts_to_send:
                 error_messages = [r.message for r in alerts_to_send]
@@ -8832,11 +8858,9 @@ class ValidationEventHandler:
                 
                 webhook_sent = await self._send_validation_alert(instance_code, error_messages, serial_number)
                 
-                # Bước 6: Nếu gửi thành công, ghi cache cho từng lỗi đã gửi
                 if webhook_sent:
                     print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
-                        # DÙNG LẠI CACHE KEY CỤ THỂ ĐÃ TẠO Ở TRÊN
                         specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                         cache_service.mark_validation_alert_as_sent(instance_code, specific_error_key)
                         print(f"  🔒 Đã cache cho: {result.message[:80]}...")
@@ -8856,9 +8880,8 @@ class ValidationEventHandler:
             }
             
         except Exception as e:
-            # Xử lý lỗi hệ thống (giữ nguyên logic cũ)
+            # Xử lý lỗi hệ thống (giữ nguyên)
             print(f"❌ [Validation Handler] Lỗi nghiêm trọng trong Validation Service: {str(e)}")
-            # ... (phần xử lý lỗi này có thể giữ nguyên hoặc cải tiến sau)
             return {
                 "success": False,
                 "message": f"Lỗi Validation Service: {str(e)}",
@@ -8884,12 +8907,13 @@ class ValidationEventHandler:
     async def _send_error_alert(self, instance_code: str, error_message: str) -> bool:
         """Gửi cảnh báo lỗi hệ thống qua webhook service."""
         try:
-            # Logic này hiện không được dùng trong luồng chính nhưng giữ lại để có thể dùng sau
-            result = await self.webhook_service.send_custom_alert(
-                title="LỖI VALIDATION SERVICE",
-                message=f"Lỗi xử lý validation cho {instance_code}: {error_message}",
-                instance_code=instance_code
+            from app.domains.notification.models import CustomAlertRequest
+            alert_request = CustomAlertRequest(
+                 title="LỖI VALIDATION SERVICE",
+                 message=f"Lỗi xử lý validation cho {instance_code}: {error_message}",
+                 instance_code=instance_code
             )
+            result = await self.webhook_service.send_custom_alert(alert_request)
             return result.success
         except Exception as e:
             print(f"❌ Lỗi khi gửi error alert: {e}")
@@ -9118,33 +9142,18 @@ FILE: app\domains\validation\services\validation_service.py
 """
 Validation Service - Dịch vụ domain cho các quy tắc validation
 """
-from typing import Dict, List, Any, Optional
-from app.domains.validation.models import ValidationResult, ValidationType, ValidationStatus
+from typing import Dict, List, Any
+from app.domains.validation.models import ValidationResult, ValidationType
 from app.core.utils.field_extractor import FieldExtractor
-from app.core.config.field_constants import FFN
+# [THAY ĐỔI] Import các hàm helper mới
+from app.core.config.node_config import get_field_mapping
 
 class ValidationService:
     """
     Dịch vụ validation cho hệ thống phê duyệt.
     
-    Class này cung cấp các quy tắc validation khác nhau để kiểm tra
-    tính nhất quán và hợp lệ của dữ liệu trong quy trình phê duyệt:
-    
-    - ADVANCE_AMOUNT_MISMATCH: So sánh tổng số tiền tạm ứng
-    - PAYMENT_AMOUNT_MISMATCH: So sánh số tiền thanh toán
-    - TOTAL_AMOUNT_MISMATCH: Kiểm tra tổng số tiền thanh toán
-    - WORKFLOW_STATUS: Kiểm tra trạng thái node
-    - FIELD_CONSISTENCY: Kiểm tra logic giữa các trường
-    
-    Mỗi validation sẽ trả về ValidationResult với một trong các trạng thái:
-    - VALID: Validation pass
-    - INVALID: Validation fail  
-    - SKIPPED: Bỏ qua do thiếu dữ liệu
-    - ERROR: Có lỗi trong quá trình validation
-    
-    Attributes:
-        field_extractor (FieldExtractor): Công cụ trích xuất dữ liệu từ form
-        validation_rules (Dict): Map từ validation type đến method tương ứng
+    [NÂNG CẤP] Class này giờ đây đọc cấu hình field_mappings động dựa trên
+    approval_code để hỗ trợ các quy tắc validation cho nhiều quy trình.
     """
     
     def __init__(self):
@@ -9154,26 +9163,35 @@ class ValidationService:
         self.validation_rules = {
             ValidationType.ADVANCE_AMOUNT_MISMATCH: self.validate_advance_amount_mismatch,
             ValidationType.PAYMENT_AMOUNT_MISMATCH: self.validate_payment_amount_mismatch,
-            #ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
-            ValidationType.WORKFLOW_STATUS: self.validate_workflow_status,
-            ValidationType.FIELD_CONSISTENCY: self.validate_field_consistency,
+            # Các quy tắc khác có thể được thêm vào đây
         }
     
-    # Thay vì trả về ValidationResult, giờ đây hàm sẽ trả về List[ValidationResult]
-    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
+    # [THAY ĐỔI] Signature nhận thêm approval_code
+    def validate_advance_amount_mismatch(self, approval_code: str, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
         """
-        Trả về một danh sách các ValidationResult, mỗi result cho một lỗi.
+        So sánh số tiền tạm ứng giữa yêu cầu của người dùng và số tiền chi của kế toán.
+        Sử dụng tên trường động từ cấu hình.
         """
         try:
+            # [LOGIC MỚI] Lấy tên trường từ cấu hình động
+            accounting_advance_field = get_field_mapping(approval_code, "accounting_advance_info")
+            expenditure_field = get_field_mapping(approval_code, "expenditure_amount")
+
+            if not accounting_advance_field or not expenditure_field:
+                return [ValidationResult.create_skipped(
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Cấu hình 'accounting_advance_info' hoặc 'expenditure_amount' bị thiếu."
+                )]
+
             accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
+                form_data, accounting_advance_field, expenditure_field
             )
             
             results = []
             found_data = False
 
-            for i in range(1, 5): # Chỉ kiểm tra 4 lần
-                user_advance_field = f"Số tiền tạm ứng lần {i}:"
+            for i in range(1, 5): # Giữ nguyên logic kiểm tra 4 lần
+                user_advance_field = f"Số tiền tạm ứng lần {i}:" # Giả định tên trường này là cố định
                 user_advance_value = self.field_extractor.extract_field_value(form_data, user_advance_field)
                 
                 if user_advance_value is not None:
@@ -9190,55 +9208,57 @@ class ValidationService:
                     
                     if abs(user_amount - accountant_amount) >= 0.01:
                         message = (f"❌ Lỗi Tạm ứng Lần {i}: Yêu cầu ({user_amount:,.0f}) ≠ Kế toán chi ({accountant_amount:,.0f}). "
-                                f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
-                        # Tạo một result riêng cho lỗi này
+                                   f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
                         results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
                 except (ValueError, TypeError):
                     message = f"❌ Lỗi định dạng số Tạm ứng Lần {i}."
                     results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
 
-            # Nếu không có lỗi nào được tìm thấy và có dữ liệu để kiểm tra
             if not results and found_data:
                 results.append(ValidationResult.create_valid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "✅ Tất cả các lần tạm ứng đã khớp."
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH, "✅ Tất cả các lần tạm ứng đã khớp."
                 ))
             
-            # Nếu không có dữ liệu để kiểm tra
             if not found_data:
                 results.append(ValidationResult.create_skipped(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH, "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
                 ))
             
             return results
                 
         except Exception as e:
             return [ValidationResult.create_error(
-                ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}",
+                ValidationType.ADVANCE_AMOUNT_MISMATCH, f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}"
             )]
 
-    def validate_payment_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+    # [THAY ĐỔI] Signature nhận thêm approval_code
+    def validate_payment_amount_mismatch(self, approval_code: str, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tính nhất quán số tiền thanh toán (giữ nguyên logic cũ).
-        
-        So sánh "Kế toán - Thông tin thanh toán" với "Số tiền còn phải thanh toán" 
-        hoặc "Số tiền thanh toán".
+        Validation tính nhất quán số tiền thanh toán, sử dụng tên trường động.
         """
         try:
+            # [LOGIC MỚI] Lấy tên trường từ cấu hình động
+            accounting_payment_field = get_field_mapping(approval_code, "accounting_payment_info")
+            expenditure_field = get_field_mapping(approval_code, "expenditure_amount")
+            # [LOGIC MỚI] Lấy các trường thanh toán khác từ cấu hình (ví dụ)
+            # Giả sử chúng ta thêm các key này vào field_mappings
+            remaining_payment_field = get_field_mapping(approval_code, "remaining_payment_amount") or "Số tiền còn phải thanh toán"
+            payment_field = get_field_mapping(approval_code, "payment_amount") or "Số tiền thanh toán"
+
+            if not accounting_payment_field or not expenditure_field:
+                 return ValidationResult.create_skipped(
+                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Cấu hình 'accounting_payment_info' hoặc 'expenditure_amount' bị thiếu."
+                )
+
             payment_info_amount = self.field_extractor.extract_field_from_fieldlist(
-                form_data,  FFN.ACCOUNTING_PAYMENT_INFO, FFN.EXPENDITURE_AMOUNT
+                form_data,  accounting_payment_field, expenditure_field
             )
-            amount_due = self.field_extractor.extract_field_value(
-                form_data,  FFN.REMAINING_PAYMENT_AMOUNT
-            )
-            amount_paid = self.field_extractor.extract_field_value(
-                form_data, FFN.PAYMENT_AMOUNT
-            )
+            amount_due = self.field_extractor.extract_field_value(form_data,  remaining_payment_field)
+            amount_paid = self.field_extractor.extract_field_value(form_data, payment_field)
             
             compare_amount = amount_due if amount_due is not None else amount_paid
-            compare_field_name = FFN.REMAINING_PAYMENT_AMOUNT if amount_due is not None else FFN.PAYMENT_AMOUNT
+            compare_field_name = remaining_payment_field if amount_due is not None else payment_field
 
             if payment_info_amount is None or compare_amount is None:
                 return ValidationResult.create_skipped(
@@ -9251,8 +9271,7 @@ class ValidationService:
 
             if abs(payment_info_float - compare_amount_float) < 0.01:
                 return ValidationResult.create_valid(
-                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
+                    ValidationType.PAYMENT_AMOUNT_MISMATCH, f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
                 )
             else:
                 message = (f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,.0f}) ≠ "
@@ -9262,141 +9281,28 @@ class ValidationService:
                 return ValidationResult.create_invalid(ValidationType.PAYMENT_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}"
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
-            )
-
-    def validate_total_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
-        """
-        Validation tổng số tiền thanh toán dựa trên các khoản chi đã được kế toán xác nhận.
-        
-        Công thức: Total = (Tổng các khoản chi trong FieldList "Kế toán - Thông tin tạm ứng") + (Số tiền còn phải thanh toán).
-        """
-        try:
-            # Lấy tổng các khoản chi tạm ứng THỰC TẾ từ kế toán
-            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
-            )
-            total_accountant_advance = sum(float(v) for v in accountant_expenditures if v is not None and str(v).strip() != '')
-
-            # Lấy các trường còn lại
-            amount_due = self.field_extractor.extract_field_value(form_data, FFN.REMAINING_PAYMENT_AMOUNT)
-            total_payment_actual = self.field_extractor.extract_field_value(form_data, FFN.TOTAL_PAYMENT_AMOUNT)
-
-            if total_accountant_advance == 0 and amount_due is None:
-                return ValidationResult.create_skipped(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Kế toán chưa điền thông tin chi hoặc số tiền còn lại."
-                )
-
-            if total_payment_actual is None:
-                return ValidationResult.create_skipped(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Không tìm thấy trường '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
-                )
-
-            amount_due_float = float(amount_due) if amount_due is not None else 0.0
-            total_actual_float = float(total_payment_actual)
-            
-            total_expected = total_accountant_advance + amount_due_float
-
-            if abs(total_expected - total_actual_float) < 0.01:
-                return ValidationResult.create_valid(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,.0f} VND"
-                )
-            else:
-                case_description = f"Tổng Kế toán chi ({total_accountant_advance:,.0f}) + Còn Lại ({amount_due_float:,.0f})"
-                message = (f"❌ Lỗi tổng tiền: Thực tế ({total_actual_float:,.0f}) ≠ "
-                        f"Dự kiến ({total_expected:,.0f} từ {case_description}). "
-                        f"Chênh lệch: {abs(total_expected - total_actual_float):,.0f} VND")
-                details = {
-                    "total_expected": total_expected, 
-                    "total_actual": total_actual_float,
-                    "total_accountant_advance": total_accountant_advance,
-                    "remaining_payment": amount_due_float
-                }
-                return ValidationResult.create_invalid(ValidationType.TOTAL_AMOUNT_MISMATCH, message, details)
-        except (ValueError, TypeError) as e:
-            return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
-            )
-        except Exception as e:
-            return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}"
             )
     
-    def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
-        """
-        Validation trạng thái workflow để phát hiện node bị thu hồi.
-        """
-        try:
-            target_node = next((task for task in task_list if task.get('node_id') == node_id), None)
-            
-            if not target_node:
-                return ValidationResult.create_skipped(
-                    ValidationType.WORKFLOW_STATUS,
-                    f"ℹ️ Bỏ qua: Node {node_id[:8]}... không tìm thấy trong danh sách task"
-                )
-            
-            current_status = target_node.get('status', 'UNKNOWN')
-            problematic_statuses = ['REJECTED', 'CANCELED', 'WITHDRAWN']
-            if current_status in problematic_statuses:
-                return ValidationResult.create_invalid(
-                    ValidationType.WORKFLOW_STATUS,
-                    f"⚠️ CẢNH BÁO: Node {node_id[:8]}... có trạng thái {current_status} - có thể đã bị thu hồi hoặc từ chối"
-                )
-            
-            return ValidationResult.create_valid(
-                ValidationType.WORKFLOW_STATUS,
-                f"✅ Node {node_id[:8]}... có trạng thái bình thường: {current_status}"
-            )
-        except Exception as e:
-            return ValidationResult.create_error(
-                ValidationType.WORKFLOW_STATUS,
-                f"❌ Lỗi kiểm tra trạng thái workflow: {str(e)}"
-            )
-    
-    def validate_field_consistency(self, form_data: List[Dict], **kwargs) -> ValidationResult:
-        """
-        Placeholder cho các logic validation về tính nhất quán của các trường khác.
-        """
-        return ValidationResult.create_valid(
-            ValidationType.FIELD_CONSISTENCY,
-            "✅ Kiểm tra tính nhất quán các trường thành công (placeholder)"
-        )
-    
-    def run_validation(self, validation_type: ValidationType, **kwargs) -> ValidationResult:
-        """
-        Chạy một quy tắc validation cụ thể.
-        """
-        if validation_type in self.validation_rules:
-            return self.validation_rules[validation_type](**kwargs)
-        else:
-            return ValidationResult.create_error(
-                validation_type,
-                f"❌ Loại validation không xác định: {validation_type}"
-            )
-    
-    def run_all_validations(self, form_data: List[Dict], task_list: List[Dict], 
+    # [THAY ĐỔI] Signature của hàm chính đã thay đổi
+    def run_all_validations(self, approval_code: str, form_data: List[Dict], task_list: List[Dict], 
                            node_id: str) -> List[ValidationResult]:
         """
-        Chạy tất cả các validation rules đã được đăng ký.
+        Chạy tất cả các validation rules đã được đăng ký cho quy trình được chỉ định.
         """
-        print(f"🚀 Bắt đầu chạy tất cả validation cho node {node_id[:8]}...")
+        print(f"🚀 Bắt đầu chạy tất cả validation cho quy trình '{approval_code}'...")
         results = []
         
-        for validation_type in self.validation_rules.keys():
+        for validation_type, validation_func in self.validation_rules.items():
             print(f"▶️ Đang chạy: {validation_type.value}...")
-            # Sử dụng extend để xử lý việc một rule có thể trả về nhiều result
-            validation_func = self.validation_rules[validation_type]
             
-            # Cần kiểm tra xem hàm có trả về list hay không
-            # Vì các hàm khác vẫn trả về 1 result đơn lẻ
+            # [THAY ĐỔI] Truyền approval_code vào mỗi hàm validation
             result_or_list = validation_func(
+                approval_code=approval_code,
                 form_data=form_data,
                 task_list=task_list,
                 node_id=node_id
