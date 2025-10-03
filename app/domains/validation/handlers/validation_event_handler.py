@@ -57,7 +57,13 @@ class ValidationEventHandler:
             # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
-            
+
+            # Nếu không có trong payload, thì tìm trong event body
+            event_body = raw_data.get('event', {})
+            if not instance_status:
+                instance_status = event_body.get('status')
+
+
             # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
@@ -106,15 +112,17 @@ class ValidationEventHandler:
             
             print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                specific_validation_type = result.validation_type.value
+                # TẠO CACHE KEY CỤ THỂ CHO TỪNG LỖI
+                # Dùng hash của message để đảm bảo mỗi lỗi là duy nhất
+                specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                 
                 if cache_service.is_validation_alert_recently_sent(
-                    instance_code, specific_validation_type, cache_duration_minutes=10
+                    instance_code, specific_error_key, cache_duration_minutes=10
                 ):
-                    print(f"  🔄 Bỏ qua (đã cache): {specific_validation_type}")
+                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...") # Log một phần message
                     skipped_count += 1
                 else:
-                    print(f"  🆕 Cần gửi cảnh báo cho: {specific_validation_type}")
+                    print(f"  🆕 Cần gửi cảnh báo cho: {result.message[:80]}...")
                     alerts_to_send.append(result)
 
             # Bước 5: Gửi webhook nếu có cảnh báo mới cần gửi
@@ -129,9 +137,10 @@ class ValidationEventHandler:
                 if webhook_sent:
                     print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
-                        specific_validation_type = result.validation_type.value
-                        cache_service.mark_validation_alert_as_sent(instance_code, specific_validation_type)
-                        print(f"  🔒 Đã cache cho: {specific_validation_type}")
+                        # DÙNG LẠI CACHE KEY CỤ THỂ ĐÃ TẠO Ở TRÊN
+                        specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
+                        cache_service.mark_validation_alert_as_sent(instance_code, specific_error_key)
+                        print(f"  🔒 Đã cache cho: {result.message[:80]}...")
                 else:
                     print("❌ [Validation Handler] Gửi webhook thất bại.")
             else:

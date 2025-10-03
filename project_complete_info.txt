@@ -1,7 +1,7 @@
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-09-17 15:18:09
+Thời gian tạo: 2025-10-03 14:17:39
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -107,7 +107,7 @@ app\core\routers\monitoring.py (1619 bytes)
 app\core\routers\webhook.py (2919 bytes)
 app\core\utils\__init__.py (332 bytes)
 app\core\utils\amount_detector.py (10162 bytes)
-app\core\utils\field_extractor.py (7208 bytes)
+app\core\utils\field_extractor.py (12805 bytes)
 app\core\utils\helpers.py (2198 bytes)
 app\domains\__init__.py (593 bytes)
 app\domains\notification\__init__.py (262 bytes)
@@ -124,22 +124,22 @@ app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
 app\domains\qr_generation\services\__init__.py (214 bytes)
 app\domains\qr_generation\services\amount_detector.py (15034 bytes)
-app\domains\qr_generation\services\qr_processor.py (17853 bytes)
+app\domains\qr_generation\services\qr_processor.py (17581 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (10470 bytes)
+app\domains\validation\handlers\validation_event_handler.py (10972 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (13775 bytes)
-Dockerfile (726 bytes)
-Get detail code.ipynb (10315 bytes)
-lark_events.csv (170959 bytes)
+app\domains\validation\services\validation_service.py (15465 bytes)
+Dockerfile (1896 bytes)
+Get detail code.ipynb (10463 bytes)
+lark_events.csv (111947 bytes)
 project_complete_info.txt (0 bytes)
-README.md (7976 bytes)
+README.md (7974 bytes)
 requirements.txt (136 bytes)
 
 Tổng cộng: 53 file
@@ -1993,7 +1993,10 @@ class FieldExtractor:
     def extract_field_from_fieldlist(self, form_data: List[Dict], fieldlist_name: str, 
                                 target_field_name: str, debug: bool = False) -> Optional[Any]:
         """
-        ✅ NEW: Trích xuất field từ bên trong một fieldList cụ thể
+        Trích xuất giá trị đầu tiên của một field từ bên trong một fieldList cụ thể.
+        
+        Hàm này chỉ trả về giá trị đầu tiên tìm thấy. Để lấy tất cả giá trị,
+        sử dụng `extract_all_values_from_fieldlist`.
         
         Args:
             form_data: Form data từ API
@@ -2006,46 +2009,141 @@ class FieldExtractor:
         """
         try:
             if debug:
-                print(f"🔍 Searching for '{target_field_name}' inside fieldList '{fieldlist_name}'")
+                print(f"🔍 Searching for first '{target_field_name}' in fieldList '{fieldlist_name}'")
                 
-            # Validate input parameters
             if not fieldlist_name or not target_field_name:
-                if debug:
-                    print("❌ Invalid parameters: fieldlist_name and target_field_name required")
+                if debug: print("❌ Invalid parameters: fieldlist_name and target_field_name required")
                 return None
                 
-            # Tìm fieldList container
             for field in form_data:
                 if field.get('name') == fieldlist_name and field.get('type') == 'fieldList':
                     field_list_values = field.get('value', [])
+                    if debug: print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} items")
                     
-                    if debug:
-                        print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} items")
-                    
-                    # Duyệt qua các items trong fieldList
                     for field_group in field_list_values:
                         if isinstance(field_group, list):
                             for sub_field in field_group:
                                 if isinstance(sub_field, dict) and sub_field.get('name') == target_field_name:
                                     value = sub_field.get('value')
-                                    if debug:
-                                        print(f"✅ Found '{target_field_name}' = {value}")
+                                    if debug: print(f"✅ Found first '{target_field_name}' = {value}")
                                     return value
                     
-                    if debug:
-                        print(f"❌ Field '{target_field_name}' not found in fieldList")
+                    if debug: print(f"❌ Field '{target_field_name}' not found in fieldList")
                     return None
             
             if debug:
                 print(f"❌ fieldList '{fieldlist_name}' not found")
-                available_fieldlists = [f.get('name') for f in form_data if f.get('type') == 'fieldList']
-                print(f"Available fieldLists: {available_fieldlists}")
+                available = [f.get('name') for f in form_data if f.get('type') == 'fieldList']
+                print(f"Available fieldLists: {available}")
             return None
             
         except Exception as e:
             print(f"❌ Error extracting field from fieldList: {e}")
             return None
+            
+    def extract_all_values_from_fieldlist(self, form_data: List[Dict], fieldlist_name: str, 
+                                          target_field_name: str, debug: bool = False) -> List[Any]:
+        """
+        ✅ MỚI: Trích xuất TẤT CẢ các giá trị của một field từ TẤT CẢ các dòng trong một fieldList.
+        
+        Hữu ích khi cần tính tổng các giá trị trong một danh sách, ví dụ như tổng "Số tiền chi"
+        từ nhiều lần tạm ứng của kế toán.
+        
+        Args:
+            form_data: Form data từ API.
+            fieldlist_name: Tên của fieldList container (ví dụ: "Kế toán - Thông tin tạm ứng").
+            target_field_name: Tên của field cần trích xuất giá trị (ví dụ: "Số tiền chi").
+            debug: Bật/tắt in thông tin gỡ lỗi.
+            
+        Returns:
+            List[Any]: Một danh sách chứa tất cả các giá trị tìm thấy. Trả về list rỗng nếu không tìm thấy gì.
+        """
+        extracted_values = []
+        try:
+            if debug:
+                print(f"🔍 Searching for ALL '{target_field_name}' values in fieldList '{fieldlist_name}'")
 
+            for field in form_data:
+                if field.get('name') == fieldlist_name and field.get('type') == 'fieldList':
+                    field_list_values = field.get('value', [])
+                    if debug:
+                        print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} rows.")
+                    
+                    # Duyệt qua từng dòng (field_group) trong fieldList
+                    for i, field_group in enumerate(field_list_values):
+                        if isinstance(field_group, list):
+                            # Duyệt qua từng trường (sub_field) trong dòng
+                            for sub_field in field_group:
+                                if isinstance(sub_field, dict) and sub_field.get('name') == target_field_name:
+                                    value = sub_field.get('value')
+                                    extracted_values.append(value)
+                                    if debug:
+                                        print(f"   ✅ Row {i+1}: Found value '{value}'")
+                    
+                    # Sau khi duyệt xong, không cần tìm nữa
+                    if debug:
+                        print(f"📊 Total values found: {len(extracted_values)}")
+                    return extracted_values
+            
+            if debug:
+                print(f"❌ FieldList '{fieldlist_name}' not found in form data.")
+            return extracted_values
+
+        except Exception as e:
+            print(f"❌ Error extracting all values from fieldList: {e}")
+            return extracted_values
+
+    def extract_fields_by_prefix(self, form_data: List[Dict], prefix: str, debug: bool = False) -> Dict[str, Any]:
+        """
+        ✅ MỚI: Trích xuất tất cả các trường có tên bắt đầu bằng một tiền tố (prefix) cho trước.
+        
+        Hữu ích để tìm các trường động như "Số tiền tạm ứng lần 1:", "Số tiền tạm ứng lần 2:",...
+        
+        Args:
+            form_data: Form data từ API.
+            prefix: Tiền tố dùng để tìm kiếm (ví dụ: "Số tiền tạm ứng lần").
+            debug: Bật/tắt in thông tin gỡ lỗi.
+            
+        Returns:
+            Dict[str, Any]: Một dictionary với key là tên đầy đủ của trường và value là giá trị của nó.
+        """
+        extracted_fields = {}
+        try:
+            if debug:
+                print(f"🔍 Searching for all fields with prefix: '{prefix}'")
+            
+            # Duyệt qua tất cả các trường ở mọi cấp độ
+            for field in form_data:
+                field_name = field.get('name')
+                
+                # Kiểm tra trường ở cấp cao nhất
+                if field_name and field_name.startswith(prefix):
+                    value = field.get('value')
+                    extracted_fields[field_name] = value
+                    if debug:
+                        print(f"   ✅ Found top-level field: '{field_name}' = {value}")
+                
+                # Kiểm tra các trường lồng trong fieldList
+                if field.get('type') == 'fieldList' and 'value' in field:
+                    field_list_values = field.get('value', [])
+                    if isinstance(field_list_values, list):
+                        for field_group in field_list_values:
+                            if isinstance(field_group, list):
+                                for sub_field in field_group:
+                                    sub_field_name = sub_field.get('name')
+                                    if sub_field_name and sub_field_name.startswith(prefix):
+                                        value = sub_field.get('value')
+                                        extracted_fields[sub_field_name] = value
+                                        if debug:
+                                            print(f"   ✅ Found nested field: '{sub_field_name}' = {value}")
+            
+            if debug:
+                print(f"📊 Total fields found with prefix: {len(extracted_fields)}")
+            return extracted_fields
+
+        except Exception as e:
+            print(f"❌ Error extracting fields by prefix '{prefix}': {e}")
+            return extracted_fields
 ============================================================
 
 ============================================================
@@ -3370,13 +3468,15 @@ FILE: app\domains\qr_generation\services\qr_processor.py
 ============================================================
 import json
 from app.core.config.settings import settings
+# NODE_CONFIG và AmountDetector không còn cần thiết cho logic chính, nhưng giữ lại import để không ảnh hưởng các hàm phụ
 from app.core.config.node_config import NODE_CONFIG
 from app.core.config.field_constants import FFN
 from app.core.infrastructure.lark_service import lark_service
 from app.core.infrastructure.cache_service import cache_service
 from app.core.utils.field_extractor import FieldExtractor
 from app.domains.qr_generation.services.vietqr_service import vietqr_service
-from app.domains.qr_generation.services.amount_detector import AmountDetector
+# AmountDetector không còn được sử dụng trong hàm chính nữa
+# from app.domains.qr_generation.services.amount_detector import AmountDetector
 from app.domains.qr_generation.models import QRType, BankInfo
 
 class QRProcessor:
@@ -3388,39 +3488,23 @@ class QRProcessor:
     
     Attributes:
         field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
-        amount_detector (AmountDetector): Bộ phát hiện và xác định số tiền
     """
 
     def __init__(self):
         """Khởi tạo QRProcessor với các service cần thiết."""
         self.field_extractor = FieldExtractor()
-        self.amount_detector = AmountDetector()
+        # self.amount_detector không còn cần thiết nữa
+        # self.amount_detector = AmountDetector()
 
+    # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
     def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
         """
         Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
-        
-        Phương thức này sẽ duyệt qua danh sách task và tìm node đầu tiên
-        thỏa mãn cả trạng thái chính và các điều kiện phụ.
-        
-        Args:
-            api_response (dict): Phản hồi API từ Lark chứa thông tin instance
-            node_config (dict, optional): Cấu hình node. Defaults to NODE_CONFIG.
-            
-        Returns:
-            dict: Kết quả kiểm tra bao gồm:
-                - found (bool): Có tìm thấy node phù hợp không
-                - node_id (str): ID của node tìm thấy
-                - node_config (dict): Cấu hình của node
-                - strategy (str): Chiến lược xử lý
-                - matched_status (str): Trạng thái hiện tại
-                - required_status (str): Trạng thái yêu cầu
-                - all_tasks (list): Danh sách tất cả task
-                - node_status_map (dict): Map trạng thái của các node
+        (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
         """
         if node_config is None:
             node_config = NODE_CONFIG
-            
+        # ... logic của hàm cũ giữ nguyên ...
         try:
             # Trích xuất dữ liệu từ API response
             data = api_response.get('data', {})
@@ -3525,24 +3609,15 @@ class QRProcessor:
                 'all_matching_configured': []
             }
 
+
     def validate_amount_value(self, amount_value) -> dict:
         """
         Validate và chuyển đổi giá trị số tiền.
-        
-        Args:
-            amount_value: Giá trị số tiền cần validate (có thể là string, int, float)
-            
-        Returns:
-            dict: Kết quả validation bao gồm:
-                - valid (bool): Giá trị có hợp lệ không
-                - amount (int): Giá trị số tiền đã chuyển đổi
-                - error (str): Thông báo lỗi nếu có
         """
         try:
             if amount_value is None:
                 return {'valid': False, 'amount': None, 'error': 'Số tiền không được để trống'}
-                
-            # Chuyển đổi sang float trước, sau đó sang int
+            
             amount_float = float(amount_value)
             amount_int = int(amount_float)
             
@@ -3556,83 +3631,91 @@ class QRProcessor:
 
     async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
         """
-        Xử lý phê duyệt với tạo QR code và comment.
-        
-        Đây là phương thức chính xử lý toàn bộ quy trình:
-        1. Lấy thông tin instance từ Lark
-        2. Kiểm tra node phù hợp với cấu hình
-        3. Trích xuất và validate dữ liệu form
-        4. Kiểm tra duplicate để tránh tạo QR trùng lặp
-        5. Tạo mã VietQR
-        6. Upload và tạo comment
-        
-        Args:
-            instance_code (str): Mã instance phê duyệt
-            access_token (str): Token để truy cập Lark API
-            
-        Returns:
-            bool: True nếu xử lý thành công, False nếu có lỗi
+        Xử lý phê duyệt với tạo QR code và comment (phiên bản nâng cấp hỗ trợ nhiều lần tạm ứng).
         """
         try:
             # Bước 1: Lấy thông tin chi tiết của instance
             api_response = await lark_service.get_approval_instance(instance_code, access_token)
-            if not api_response:
+            if not api_response or 'data' not in api_response:
                 print(f"❌ Không thể lấy thông tin instance {instance_code}")
                 return False
             
-            # Bước 2: Kiểm tra node có trạng thái phù hợp
-            node_check_result = self.check_pending_allowed_node_in_task_list(api_response)
-            
-            if not node_check_result['found']:
-                print(f"⏭️ Bỏ qua tạo QR - không tìm thấy node phù hợp với cấu hình")
-                return True  # Trả về True vì không phải lỗi, chỉ là bỏ qua
-            
-            # Lấy thông tin node phù hợp
-            matching_node_id = node_check_result['node_id']
-            node_config = node_check_result['node_config']
-            node_strategy = node_check_result['strategy']
-            matched_status = node_check_result.get('matched_status', 'UNKNOWN')
-            required_status = node_check_result.get('required_status', 'PENDING')
-            
-            print(f"✅ Đang xử lý node: {node_config['name']} (chiến lược: {node_strategy})")
-            print(f"   Trạng thái: {matched_status} (yêu cầu: {required_status})")
-            
-            # Bước 3: Trích xuất dữ liệu form
-            if 'data' not in api_response or 'form' not in api_response['data']:
-                print("❌ Không tìm thấy dữ liệu form")
-                return False
-                
-            form_str = api_response['data']['form']
+            task_list = api_response['data'].get('task_list', [])
+            form_str = api_response['data'].get('form', '[]')
             form_data = json.loads(form_str)
+
+            # --- [LOGIC MỚI] Bắt đầu phần tìm kiếm lần tạm ứng hoạt động ---
             
-            # Bước 4: Phát hiện số tiền và loại QR theo chiến lược node
-            amount_result = self.amount_detector.get_amount_and_type_for_node(matching_node_id, form_data)
+            # 2.1: Tìm tất cả các node "Thủ quỹ chi tiền tạm ứng" trong quy trình
+            cashier_nodes = [task for task in task_list if "Thủ quỹ chi tiền tạm ứng" in task.get('node_name', '')]
+            print(f"🔍 Tìm thấy {len(cashier_nodes)} node 'Thủ quỹ chi tiền tạm ứng' trong quy trình.")
+
+            active_advance_info = None
             
-            if not amount_result['success']:
-                print(f"❌ Không thể xác định số tiền/loại QR: {amount_result.get('reason', 'Lỗi không xác định')}")
-                if 'error' in amount_result:
-                    print(f"    Chi tiết lỗi: {amount_result['error']}")
-                return False
-            
-            qr_type = amount_result['qr_type']
-            amount_value = amount_result['amount']
-            field_used = amount_result['field_used']
+            # 2.2: Lặp qua các node thủ quỹ để tìm node đang PENDING
+            for i, node in enumerate(cashier_nodes, 1):
+                node_id = node.get('node_id')
+                node_status = node.get('status')
+                print(f"   - Kiểm tra lần tạm ứng {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+
+                # Điều kiện 1: Node phải ở trạng thái PENDING
+                if node_status == 'PENDING':
+                    # Điều kiện 2: Người dùng phải chọn "Yes" cho lần tạm ứng tương ứng
+                    yes_no_field_name = f"Thanh toán tạm ứng lần {i}: Y/N"
+                    amount_field_name = f"Số tiền tạm ứng lần {i}:"
+
+                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
+                    
+                    if yes_no_value == "Yes":
+                        print(f"     ✅ Điều kiện thỏa mãn: Node PENDING và người dùng chọn 'Yes'.")
+                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
+                        
+                        active_advance_info = {
+                            "amount": amount_value,
+                            "node_id": node_id,
+                            "node_name": node.get('node_name'),
+                            "qr_type": "advance",
+                            "field_used": amount_field_name,
+                            "advance_round": i
+                        }
+                        print(f"     ➡️ Lần tạm ứng {i} được kích hoạt với số tiền: {amount_value}")
+                        break # Tìm thấy rồi thì dừng lại
+                    else:
+                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
+                else:
+                    print(f"     - Bỏ qua: Trạng thái node không phải PENDING.")
+
+            # 2.3: Xử lý kết quả tìm kiếm
+            if not active_advance_info:
+                print(f"⏭️  Không có lần tạm ứng nào đang hoạt động (PENDING và được chọn 'Yes'). Bỏ qua tạo QR.")
+                return True # Coi như thành công vì đã xử lý đúng (bỏ qua)
+
+            # --- [LOGIC MỚI] Kết thúc phần tìm kiếm ---
+
+
+            # --- [PHẦN GIỮ NGUYÊN] Tiếp tục xử lý với thông tin đã tìm được ---
+
+            # Lấy các biến từ kết quả tìm kiếm
+            matching_node_id = active_advance_info['node_id']
+            qr_type = active_advance_info['qr_type']
+            amount_value = active_advance_info['amount']
+            field_used = active_advance_info['field_used']
+            node_name = active_advance_info['node_name']
             
             # Bước 5: Kiểm tra duplicate TRƯỚC KHI tạo QR
             if cache_service.is_qr_recently_generated(
                 instance_code, matching_node_id, qr_type, 
                 settings.QR_CACHE_DURATION_MINUTES
             ):
-                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_config['name']} đã được tạo gần đây")
-                print(f"   → BỎ QUA tạo QR để tránh trùng lặp")
-                return True  # Trả về thành công vì không phải lỗi, chỉ là bỏ qua duplicate
+                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_name} đã được tạo gần đây.")
+                print(f"   → BỎ QUA tạo QR để tránh trùng lặp.")
+                return True
             
-            print(f"💰 Chi tiết tạo QR:")
+            print(f"💰 Chi tiết tạo QR cho lần tạm ứng {active_advance_info['advance_round']}:")
             print(f"   - Loại: {qr_type}")
-            print(f"   - Số tiền: {amount_value:,} VND")
+            print(f"   - Số tiền: {amount_value}")
             print(f"   - Trường sử dụng: {field_used}")
-            print(f"   - Chiến lược node: {node_strategy}")
-            print(f"   - Trạng thái kích hoạt: {matched_status}")
+            print(f"   - Node kích hoạt: {node_name} ({matching_node_id[:8]}...)")
             
             # Bước 6: Validate số tiền
             amount_validation = self.validate_amount_value(amount_value)
@@ -3641,24 +3724,19 @@ class QRProcessor:
                 return False
                 
             amount_int = amount_validation['amount']
-            
+
             # Bước 7: Trích xuất thông tin ngân hàng
             bank_id = self.field_extractor.extract_field_value(form_data, FFN.BANK_NAME)
             account_no = self.field_extractor.extract_field_value(form_data, FFN.BANK_ACCOUNT_NUMBER)
             account_name = self.field_extractor.extract_field_value(form_data, FFN.BENEFICIARY_NAME)
 
-            # Kiểm tra đầy đủ thông tin ngân hàng
             if not all([bank_id, account_no, account_name]):
-                missing_fields = []
-                if not bank_id: missing_fields.append(FFN.BANK_NAME)
-                if not account_no: missing_fields.append(FFN.BANK_ACCOUNT_NUMBER)
-                if not account_name: missing_fields.append(FFN.BENEFICIARY_NAME)
-
-                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing_fields)}")
+                missing = [f for f, v in {FFN.BANK_NAME: bank_id, FFN.BANK_ACCOUNT_NUMBER: account_no, FFN.BENEFICIARY_NAME: account_name}.items() if not v]
+                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing)}")
                 return False
             
             # Bước 8: Tạo mô tả QR theo loại
-            description = vietqr_service.generate_qr_description(qr_type, instance_code)
+            description = vietqr_service.generate_qr_description(f"{qr_type}{active_advance_info['advance_round']}", instance_code)
             
             print(f"🏦 Tạo VietQR với thông tin:")
             print(f"   - Ngân hàng: {bank_id}")
@@ -3681,7 +3759,7 @@ class QRProcessor:
                 return False
             
             # Bước 10: Upload ảnh lên Lark Approval
-            filename = f"{instance_code}_{qr_type}_qr.png"
+            filename = f"{instance_code}_{qr_type}{active_advance_info['advance_round']}_qr.png"
             upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
             
             if not upload_result['success']:
@@ -3697,17 +3775,17 @@ class QRProcessor:
                 file_url=upload_result['file_url'],
                 file_code=upload_result['file_code'],
                 filename=filename,
-                qr_type=qr_type,
+                qr_type=f"{qr_type} Lần {active_advance_info['advance_round']}", # Làm rõ hơn trong comment
                 amount=amount_int,
-                node_name=node_config['name'],
+                node_name=node_name,
                 access_token=access_token
             )
             
             if comment_result['success']:
                 print(f"✅ Hoàn thành xử lý phê duyệt {instance_code}")
-                print(f"💰 Loại: {qr_type.upper()} | Số tiền: {amount_int:,} VND")
-                print(f"🏷️ Node: {node_config['name']} | Trạng thái: {matched_status}")
-                print(f"📋 Trường: {field_used} | Chiến lược: {node_strategy}")
+                print(f"💰 Loại: {qr_type.upper()} LẦN {active_advance_info['advance_round']} | Số tiền: {amount_int:,} VND")
+                print(f"🏷️ Node: {node_name}")
+                print(f"📋 Trường: {field_used}")
                 print(f"💬 ID Comment: {comment_result['comment_id']}")
                 return True
             else:
@@ -3968,7 +4046,13 @@ class ValidationEventHandler:
             # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
-            
+
+            # Nếu không có trong payload, thì tìm trong event body
+            event_body = raw_data.get('event', {})
+            if not instance_status:
+                instance_status = event_body.get('status')
+
+
             # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
@@ -4017,15 +4101,17 @@ class ValidationEventHandler:
             
             print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                specific_validation_type = result.validation_type.value
+                # TẠO CACHE KEY CỤ THỂ CHO TỪNG LỖI
+                # Dùng hash của message để đảm bảo mỗi lỗi là duy nhất
+                specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                 
                 if cache_service.is_validation_alert_recently_sent(
-                    instance_code, specific_validation_type, cache_duration_minutes=10
+                    instance_code, specific_error_key, cache_duration_minutes=10
                 ):
-                    print(f"  🔄 Bỏ qua (đã cache): {specific_validation_type}")
+                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...") # Log một phần message
                     skipped_count += 1
                 else:
-                    print(f"  🆕 Cần gửi cảnh báo cho: {specific_validation_type}")
+                    print(f"  🆕 Cần gửi cảnh báo cho: {result.message[:80]}...")
                     alerts_to_send.append(result)
 
             # Bước 5: Gửi webhook nếu có cảnh báo mới cần gửi
@@ -4040,9 +4126,10 @@ class ValidationEventHandler:
                 if webhook_sent:
                     print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
-                        specific_validation_type = result.validation_type.value
-                        cache_service.mark_validation_alert_as_sent(instance_code, specific_validation_type)
-                        print(f"  🔒 Đã cache cho: {specific_validation_type}")
+                        # DÙNG LẠI CACHE KEY CỤ THỂ ĐÃ TẠO Ở TRÊN
+                        specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
+                        cache_service.mark_validation_alert_as_sent(instance_code, specific_error_key)
+                        print(f"  🔒 Đã cache cho: {result.message[:80]}...")
                 else:
                     print("❌ [Validation Handler] Gửi webhook thất bại.")
             else:
@@ -4333,7 +4420,7 @@ class ValidationService:
     Class này cung cấp các quy tắc validation khác nhau để kiểm tra
     tính nhất quán và hợp lệ của dữ liệu trong quy trình phê duyệt:
     
-    - ADVANCE_AMOUNT_MISMATCH: So sánh số tiền tạm ứng
+    - ADVANCE_AMOUNT_MISMATCH: So sánh tổng số tiền tạm ứng
     - PAYMENT_AMOUNT_MISMATCH: So sánh số tiền thanh toán
     - TOTAL_AMOUNT_MISMATCH: Kiểm tra tổng số tiền thanh toán
     - WORKFLOW_STATUS: Kiểm tra trạng thái node
@@ -4354,64 +4441,77 @@ class ValidationService:
         """Khởi tạo ValidationService với field extractor và mapping rules."""
         self.field_extractor = FieldExtractor()
         
-        # Mapping đã được cập nhật với các enum và tên hàm mới, cụ thể hơn
         self.validation_rules = {
             ValidationType.ADVANCE_AMOUNT_MISMATCH: self.validate_advance_amount_mismatch,
             ValidationType.PAYMENT_AMOUNT_MISMATCH: self.validate_payment_amount_mismatch,
-            ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
+            #ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
             ValidationType.WORKFLOW_STATUS: self.validate_workflow_status,
             ValidationType.FIELD_CONSISTENCY: self.validate_field_consistency,
         }
     
-    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+    # Thay vì trả về ValidationResult, giờ đây hàm sẽ trả về List[ValidationResult]
+    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
         """
-        Validation số tiền tạm ứng giữa fieldList và top-level field.
-        
-        So sánh giá trị "Số tiền chi" trong fieldList "Kế toán - Thông tin tạm ứng" 
-        với "Số tiền tạm ứng" ở top-level để đảm bảo tính nhất quán.
+        Trả về một danh sách các ValidationResult, mỗi result cho một lỗi.
         """
         try:
-            advance_amount_from_fieldlist = self.field_extractor.extract_field_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT 
-            )
-            advance_amount_toplevel = self.field_extractor.extract_field_value(
-                form_data, FFN.ADVANCE_AMOUNT
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
             )
             
-            if advance_amount_from_fieldlist is None or advance_amount_toplevel is None:
-                return ValidationResult.create_skipped(
+            results = []
+            found_data = False
+
+            for i in range(1, 5): # Chỉ kiểm tra 4 lần
+                user_advance_field = f"Số tiền tạm ứng lần {i}:"
+                user_advance_value = self.field_extractor.extract_field_value(form_data, user_advance_field)
+                
+                if user_advance_value is not None:
+                    found_data = True
+
+                if (i - 1) >= len(accountant_expenditures) or user_advance_value is None:
+                    continue
+                
+                accountant_expenditure_value = accountant_expenditures[i-1]
+                
+                try:
+                    user_amount = float(user_advance_value)
+                    accountant_amount = float(accountant_expenditure_value)
+                    
+                    if abs(user_amount - accountant_amount) >= 0.01:
+                        message = (f"❌ Lỗi Tạm ứng Lần {i}: Yêu cầu ({user_amount:,.0f}) ≠ Kế toán chi ({accountant_amount:,.0f}). "
+                                f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
+                        # Tạo một result riêng cho lỗi này
+                        results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+                except (ValueError, TypeError):
+                    message = f"❌ Lỗi định dạng số Tạm ứng Lần {i}."
+                    results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+
+            # Nếu không có lỗi nào được tìm thấy và có dữ liệu để kiểm tra
+            if not results and found_data:
+                results.append(ValidationResult.create_valid(
                     ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "ℹ️ Bỏ qua: Không tìm thấy đủ các trường về số tiền tạm ứng để so sánh."
-                )
+                    "✅ Tất cả các lần tạm ứng đã khớp."
+                ))
             
-            fieldlist_amount = float(advance_amount_from_fieldlist)
-            toplevel_amount = float(advance_amount_toplevel)
+            # Nếu không có dữ liệu để kiểm tra
+            if not found_data:
+                results.append(ValidationResult.create_skipped(
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
+                ))
             
-            if abs(fieldlist_amount - toplevel_amount) < 0.01:
-                return ValidationResult.create_valid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"✅ Số tiền tạm ứng nhất quán: {fieldlist_amount:,} VND"
-                )
-            else:
-                return ValidationResult.create_invalid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tạm ứng: '{FFN.EXPENDITURE_AMOUNT}' ({fieldlist_amount:,}) ≠ '{FFN.ADVANCE_AMOUNT}' ({toplevel_amount:,}). Chênh lệch: {abs(fieldlist_amount - toplevel_amount):,} VND",
-                    {"fieldlist_amount": fieldlist_amount, "toplevel_amount": toplevel_amount}
-                )
-        except (ValueError, TypeError) as e:
-            return ValidationResult.create_error(
-                ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền tạm ứng: {e}",
-            )
+            return results
+                
         except Exception as e:
-            return ValidationResult.create_error(
+            return [ValidationResult.create_error(
                 ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền tạm ứng: {e}",
-            )
+                f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}",
+            )]
 
     def validate_payment_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tính nhất quán số tiền thanh toán.
+        Validation tính nhất quán số tiền thanh toán (giữ nguyên logic cũ).
         
         So sánh "Kế toán - Thông tin thanh toán" với "Số tiền còn phải thanh toán" 
         hoặc "Số tiền thanh toán".
@@ -4442,69 +4542,81 @@ class ValidationService:
             if abs(payment_info_float - compare_amount_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,} VND"
+                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
                 )
             else:
-                return ValidationResult.create_invalid(
-                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,}) ≠ '{compare_field_name}' ({compare_amount_float:,}). Chênh lệch: {abs(payment_info_float - compare_amount_float):,} VND",
-                    {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
-                )
+                message = (f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,.0f}) ≠ "
+                           f"'{compare_field_name}' ({compare_amount_float:,.0f}). "
+                           f"Chênh lệch: {abs(payment_info_float - compare_amount_float):,.0f} VND")
+                details = {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
+                return ValidationResult.create_invalid(ValidationType.PAYMENT_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
             )
 
     def validate_total_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tổng số tiền thanh toán.
+        Validation tổng số tiền thanh toán dựa trên các khoản chi đã được kế toán xác nhận.
         
-        Kiểm tra công thức: Total = Tạm ứng + Còn phải thanh toán (hoặc các biến thể khác).
+        Công thức: Total = (Tổng các khoản chi trong FieldList "Kế toán - Thông tin tạm ứng") + (Số tiền còn phải thanh toán).
         """
         try:
-            advance_amount = self.field_extractor.extract_field_value(form_data, FFN.ADVANCE_AMOUNT)
+            # Lấy tổng các khoản chi tạm ứng THỰC TẾ từ kế toán
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
+            )
+            total_accountant_advance = sum(float(v) for v in accountant_expenditures if v is not None and str(v).strip() != '')
+
+            # Lấy các trường còn lại
             amount_due = self.field_extractor.extract_field_value(form_data, FFN.REMAINING_PAYMENT_AMOUNT)
             total_payment_actual = self.field_extractor.extract_field_value(form_data, FFN.TOTAL_PAYMENT_AMOUNT)
 
-            if advance_amount is None or total_payment_actual is None or amount_due is None:
+            if total_accountant_advance == 0 and amount_due is None:
                 return ValidationResult.create_skipped(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Không tìm thấy đủ các trường '{FFN.ADVANCE_AMOUNT}', '{FFN.REMAINING_PAYMENT_AMOUNT}', '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                    f"ℹ️ Bỏ qua: Kế toán chưa điền thông tin chi hoặc số tiền còn lại."
                 )
 
-            advance_float = float(advance_amount)
-            amount_due_float = float(amount_due)
+            if total_payment_actual is None:
+                return ValidationResult.create_skipped(
+                    ValidationType.TOTAL_AMOUNT_MISMATCH,
+                    f"ℹ️ Bỏ qua: Không tìm thấy trường '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                )
+
+            amount_due_float = float(amount_due) if amount_due is not None else 0.0
             total_actual_float = float(total_payment_actual)
             
-            total_expected = advance_float + amount_due_float
+            total_expected = total_accountant_advance + amount_due_float
 
             if abs(total_expected - total_actual_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,} VND"
+                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,.0f} VND"
                 )
             else:
-                case_description = f"{FFN.ADVANCE_AMOUNT} ({advance_float:,}) + {FFN.REMAINING_PAYMENT_AMOUNT} ({amount_due_float:,})"
-                return ValidationResult.create_invalid(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tổng tiền: ({total_actual_float:,}) ≠ ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
-                    {"total_expected": total_expected, "total_actual": total_actual_float}
-                )
+                case_description = f"Tổng Kế toán chi ({total_accountant_advance:,.0f}) + Còn Lại ({amount_due_float:,.0f})"
+                message = (f"❌ Lỗi tổng tiền: Thực tế ({total_actual_float:,.0f}) ≠ "
+                        f"Dự kiến ({total_expected:,.0f} từ {case_description}). "
+                        f"Chênh lệch: {abs(total_expected - total_actual_float):,.0f} VND")
+                details = {
+                    "total_expected": total_expected, 
+                    "total_actual": total_actual_float,
+                    "total_accountant_advance": total_accountant_advance,
+                    "remaining_payment": amount_due_float
+                }
+                return ValidationResult.create_invalid(ValidationType.TOTAL_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
             )
     
     def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
@@ -4567,20 +4679,25 @@ class ValidationService:
         print(f"🚀 Bắt đầu chạy tất cả validation cho node {node_id[:8]}...")
         results = []
         
-        # Vòng lặp này giúp tự động chạy tất cả các rule đã định nghĩa trong __init__
-        # Giúp code dễ mở rộng và bảo trì hơn
         for validation_type in self.validation_rules.keys():
             print(f"▶️ Đang chạy: {validation_type.value}...")
-            result = self.run_validation(
-                validation_type, 
+            # Sử dụng extend để xử lý việc một rule có thể trả về nhiều result
+            validation_func = self.validation_rules[validation_type]
+            
+            # Cần kiểm tra xem hàm có trả về list hay không
+            # Vì các hàm khác vẫn trả về 1 result đơn lẻ
+            result_or_list = validation_func(
                 form_data=form_data,
                 task_list=task_list,
                 node_id=node_id
             )
-            results.append(result)
 
-        # Tổng kết kết quả
-        invalid_count = sum(1 for r in results if r.status == ValidationStatus.INVALID)
+            if isinstance(result_or_list, list):
+                results.extend(result_or_list)
+            else:
+                results.append(result_or_list)
+
+        invalid_count = sum(1 for r in results if not r.is_valid)
         print(f"📈 Hoàn thành validation: Tìm thấy {invalid_count} vấn đề.")
         
         return results
@@ -4594,7 +4711,7 @@ FILE: project_complete_info.txt
 ================================================================================
 THÔNG TIN DỰ ÁN HOÀN CHỈNH
 ================================================================================
-Thời gian tạo: 2025-09-17 15:18:09
+Thời gian tạo: 2025-10-03 14:17:39
 Thư mục gốc: d:\Atino\extension\webhook-server-approval
 ================================================================================
 
@@ -4700,7 +4817,7 @@ app\core\routers\monitoring.py (1619 bytes)
 app\core\routers\webhook.py (2919 bytes)
 app\core\utils\__init__.py (332 bytes)
 app\core\utils\amount_detector.py (10162 bytes)
-app\core\utils\field_extractor.py (7208 bytes)
+app\core\utils\field_extractor.py (12805 bytes)
 app\core\utils\helpers.py (2198 bytes)
 app\domains\__init__.py (593 bytes)
 app\domains\notification\__init__.py (262 bytes)
@@ -4717,22 +4834,22 @@ app\domains\qr_generation\models\qr.py (1571 bytes)
 app\domains\qr_generation\routers\qr.py (1789 bytes)
 app\domains\qr_generation\services\__init__.py (214 bytes)
 app\domains\qr_generation\services\amount_detector.py (15034 bytes)
-app\domains\qr_generation\services\qr_processor.py (17853 bytes)
+app\domains\qr_generation\services\qr_processor.py (17581 bytes)
 app\domains\qr_generation\services\vietqr_service.py (6971 bytes)
 app\domains\validation\__init__.py (301 bytes)
 app\domains\validation\handlers\__init__.py (106 bytes)
-app\domains\validation\handlers\validation_event_handler.py (10470 bytes)
+app\domains\validation\handlers\validation_event_handler.py (10972 bytes)
 app\domains\validation\models\__init__.py (289 bytes)
 app\domains\validation\models\validation.py (2871 bytes)
 app\domains\validation\routers\notification.py (1283 bytes)
 app\domains\validation\routers\validation.py (1756 bytes)
 app\domains\validation\services\__init__.py (135 bytes)
-app\domains\validation\services\validation_service.py (13775 bytes)
-Dockerfile (726 bytes)
-Get detail code.ipynb (10315 bytes)
-lark_events.csv (170959 bytes)
+app\domains\validation\services\validation_service.py (15465 bytes)
+Dockerfile (1896 bytes)
+Get detail code.ipynb (10463 bytes)
+lark_events.csv (111947 bytes)
 project_complete_info.txt (0 bytes)
-README.md (7976 bytes)
+README.md (7974 bytes)
 requirements.txt (136 bytes)
 
 Tổng cộng: 53 file
@@ -6586,7 +6703,10 @@ class FieldExtractor:
     def extract_field_from_fieldlist(self, form_data: List[Dict], fieldlist_name: str, 
                                 target_field_name: str, debug: bool = False) -> Optional[Any]:
         """
-        ✅ NEW: Trích xuất field từ bên trong một fieldList cụ thể
+        Trích xuất giá trị đầu tiên của một field từ bên trong một fieldList cụ thể.
+        
+        Hàm này chỉ trả về giá trị đầu tiên tìm thấy. Để lấy tất cả giá trị,
+        sử dụng `extract_all_values_from_fieldlist`.
         
         Args:
             form_data: Form data từ API
@@ -6599,46 +6719,141 @@ class FieldExtractor:
         """
         try:
             if debug:
-                print(f"🔍 Searching for '{target_field_name}' inside fieldList '{fieldlist_name}'")
+                print(f"🔍 Searching for first '{target_field_name}' in fieldList '{fieldlist_name}'")
                 
-            # Validate input parameters
             if not fieldlist_name or not target_field_name:
-                if debug:
-                    print("❌ Invalid parameters: fieldlist_name and target_field_name required")
+                if debug: print("❌ Invalid parameters: fieldlist_name and target_field_name required")
                 return None
                 
-            # Tìm fieldList container
             for field in form_data:
                 if field.get('name') == fieldlist_name and field.get('type') == 'fieldList':
                     field_list_values = field.get('value', [])
+                    if debug: print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} items")
                     
-                    if debug:
-                        print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} items")
-                    
-                    # Duyệt qua các items trong fieldList
                     for field_group in field_list_values:
                         if isinstance(field_group, list):
                             for sub_field in field_group:
                                 if isinstance(sub_field, dict) and sub_field.get('name') == target_field_name:
                                     value = sub_field.get('value')
-                                    if debug:
-                                        print(f"✅ Found '{target_field_name}' = {value}")
+                                    if debug: print(f"✅ Found first '{target_field_name}' = {value}")
                                     return value
                     
-                    if debug:
-                        print(f"❌ Field '{target_field_name}' not found in fieldList")
+                    if debug: print(f"❌ Field '{target_field_name}' not found in fieldList")
                     return None
             
             if debug:
                 print(f"❌ fieldList '{fieldlist_name}' not found")
-                available_fieldlists = [f.get('name') for f in form_data if f.get('type') == 'fieldList']
-                print(f"Available fieldLists: {available_fieldlists}")
+                available = [f.get('name') for f in form_data if f.get('type') == 'fieldList']
+                print(f"Available fieldLists: {available}")
             return None
             
         except Exception as e:
             print(f"❌ Error extracting field from fieldList: {e}")
             return None
+            
+    def extract_all_values_from_fieldlist(self, form_data: List[Dict], fieldlist_name: str, 
+                                          target_field_name: str, debug: bool = False) -> List[Any]:
+        """
+        ✅ MỚI: Trích xuất TẤT CẢ các giá trị của một field từ TẤT CẢ các dòng trong một fieldList.
+        
+        Hữu ích khi cần tính tổng các giá trị trong một danh sách, ví dụ như tổng "Số tiền chi"
+        từ nhiều lần tạm ứng của kế toán.
+        
+        Args:
+            form_data: Form data từ API.
+            fieldlist_name: Tên của fieldList container (ví dụ: "Kế toán - Thông tin tạm ứng").
+            target_field_name: Tên của field cần trích xuất giá trị (ví dụ: "Số tiền chi").
+            debug: Bật/tắt in thông tin gỡ lỗi.
+            
+        Returns:
+            List[Any]: Một danh sách chứa tất cả các giá trị tìm thấy. Trả về list rỗng nếu không tìm thấy gì.
+        """
+        extracted_values = []
+        try:
+            if debug:
+                print(f"🔍 Searching for ALL '{target_field_name}' values in fieldList '{fieldlist_name}'")
 
+            for field in form_data:
+                if field.get('name') == fieldlist_name and field.get('type') == 'fieldList':
+                    field_list_values = field.get('value', [])
+                    if debug:
+                        print(f"📋 Found fieldList '{fieldlist_name}' with {len(field_list_values)} rows.")
+                    
+                    # Duyệt qua từng dòng (field_group) trong fieldList
+                    for i, field_group in enumerate(field_list_values):
+                        if isinstance(field_group, list):
+                            # Duyệt qua từng trường (sub_field) trong dòng
+                            for sub_field in field_group:
+                                if isinstance(sub_field, dict) and sub_field.get('name') == target_field_name:
+                                    value = sub_field.get('value')
+                                    extracted_values.append(value)
+                                    if debug:
+                                        print(f"   ✅ Row {i+1}: Found value '{value}'")
+                    
+                    # Sau khi duyệt xong, không cần tìm nữa
+                    if debug:
+                        print(f"📊 Total values found: {len(extracted_values)}")
+                    return extracted_values
+            
+            if debug:
+                print(f"❌ FieldList '{fieldlist_name}' not found in form data.")
+            return extracted_values
+
+        except Exception as e:
+            print(f"❌ Error extracting all values from fieldList: {e}")
+            return extracted_values
+
+    def extract_fields_by_prefix(self, form_data: List[Dict], prefix: str, debug: bool = False) -> Dict[str, Any]:
+        """
+        ✅ MỚI: Trích xuất tất cả các trường có tên bắt đầu bằng một tiền tố (prefix) cho trước.
+        
+        Hữu ích để tìm các trường động như "Số tiền tạm ứng lần 1:", "Số tiền tạm ứng lần 2:",...
+        
+        Args:
+            form_data: Form data từ API.
+            prefix: Tiền tố dùng để tìm kiếm (ví dụ: "Số tiền tạm ứng lần").
+            debug: Bật/tắt in thông tin gỡ lỗi.
+            
+        Returns:
+            Dict[str, Any]: Một dictionary với key là tên đầy đủ của trường và value là giá trị của nó.
+        """
+        extracted_fields = {}
+        try:
+            if debug:
+                print(f"🔍 Searching for all fields with prefix: '{prefix}'")
+            
+            # Duyệt qua tất cả các trường ở mọi cấp độ
+            for field in form_data:
+                field_name = field.get('name')
+                
+                # Kiểm tra trường ở cấp cao nhất
+                if field_name and field_name.startswith(prefix):
+                    value = field.get('value')
+                    extracted_fields[field_name] = value
+                    if debug:
+                        print(f"   ✅ Found top-level field: '{field_name}' = {value}")
+                
+                # Kiểm tra các trường lồng trong fieldList
+                if field.get('type') == 'fieldList' and 'value' in field:
+                    field_list_values = field.get('value', [])
+                    if isinstance(field_list_values, list):
+                        for field_group in field_list_values:
+                            if isinstance(field_group, list):
+                                for sub_field in field_group:
+                                    sub_field_name = sub_field.get('name')
+                                    if sub_field_name and sub_field_name.startswith(prefix):
+                                        value = sub_field.get('value')
+                                        extracted_fields[sub_field_name] = value
+                                        if debug:
+                                            print(f"   ✅ Found nested field: '{sub_field_name}' = {value}")
+            
+            if debug:
+                print(f"📊 Total fields found with prefix: {len(extracted_fields)}")
+            return extracted_fields
+
+        except Exception as e:
+            print(f"❌ Error extracting fields by prefix '{prefix}': {e}")
+            return extracted_fields
 ============================================================
 
 ============================================================
@@ -7963,13 +8178,15 @@ FILE: app\domains\qr_generation\services\qr_processor.py
 ============================================================
 import json
 from app.core.config.settings import settings
+# NODE_CONFIG và AmountDetector không còn cần thiết cho logic chính, nhưng giữ lại import để không ảnh hưởng các hàm phụ
 from app.core.config.node_config import NODE_CONFIG
 from app.core.config.field_constants import FFN
 from app.core.infrastructure.lark_service import lark_service
 from app.core.infrastructure.cache_service import cache_service
 from app.core.utils.field_extractor import FieldExtractor
 from app.domains.qr_generation.services.vietqr_service import vietqr_service
-from app.domains.qr_generation.services.amount_detector import AmountDetector
+# AmountDetector không còn được sử dụng trong hàm chính nữa
+# from app.domains.qr_generation.services.amount_detector import AmountDetector
 from app.domains.qr_generation.models import QRType, BankInfo
 
 class QRProcessor:
@@ -7981,39 +8198,23 @@ class QRProcessor:
     
     Attributes:
         field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
-        amount_detector (AmountDetector): Bộ phát hiện và xác định số tiền
     """
 
     def __init__(self):
         """Khởi tạo QRProcessor với các service cần thiết."""
         self.field_extractor = FieldExtractor()
-        self.amount_detector = AmountDetector()
+        # self.amount_detector không còn cần thiết nữa
+        # self.amount_detector = AmountDetector()
 
+    # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
     def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
         """
         Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
-        
-        Phương thức này sẽ duyệt qua danh sách task và tìm node đầu tiên
-        thỏa mãn cả trạng thái chính và các điều kiện phụ.
-        
-        Args:
-            api_response (dict): Phản hồi API từ Lark chứa thông tin instance
-            node_config (dict, optional): Cấu hình node. Defaults to NODE_CONFIG.
-            
-        Returns:
-            dict: Kết quả kiểm tra bao gồm:
-                - found (bool): Có tìm thấy node phù hợp không
-                - node_id (str): ID của node tìm thấy
-                - node_config (dict): Cấu hình của node
-                - strategy (str): Chiến lược xử lý
-                - matched_status (str): Trạng thái hiện tại
-                - required_status (str): Trạng thái yêu cầu
-                - all_tasks (list): Danh sách tất cả task
-                - node_status_map (dict): Map trạng thái của các node
+        (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
         """
         if node_config is None:
             node_config = NODE_CONFIG
-            
+        # ... logic của hàm cũ giữ nguyên ...
         try:
             # Trích xuất dữ liệu từ API response
             data = api_response.get('data', {})
@@ -8118,24 +8319,15 @@ class QRProcessor:
                 'all_matching_configured': []
             }
 
+
     def validate_amount_value(self, amount_value) -> dict:
         """
         Validate và chuyển đổi giá trị số tiền.
-        
-        Args:
-            amount_value: Giá trị số tiền cần validate (có thể là string, int, float)
-            
-        Returns:
-            dict: Kết quả validation bao gồm:
-                - valid (bool): Giá trị có hợp lệ không
-                - amount (int): Giá trị số tiền đã chuyển đổi
-                - error (str): Thông báo lỗi nếu có
         """
         try:
             if amount_value is None:
                 return {'valid': False, 'amount': None, 'error': 'Số tiền không được để trống'}
-                
-            # Chuyển đổi sang float trước, sau đó sang int
+            
             amount_float = float(amount_value)
             amount_int = int(amount_float)
             
@@ -8149,83 +8341,91 @@ class QRProcessor:
 
     async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
         """
-        Xử lý phê duyệt với tạo QR code và comment.
-        
-        Đây là phương thức chính xử lý toàn bộ quy trình:
-        1. Lấy thông tin instance từ Lark
-        2. Kiểm tra node phù hợp với cấu hình
-        3. Trích xuất và validate dữ liệu form
-        4. Kiểm tra duplicate để tránh tạo QR trùng lặp
-        5. Tạo mã VietQR
-        6. Upload và tạo comment
-        
-        Args:
-            instance_code (str): Mã instance phê duyệt
-            access_token (str): Token để truy cập Lark API
-            
-        Returns:
-            bool: True nếu xử lý thành công, False nếu có lỗi
+        Xử lý phê duyệt với tạo QR code và comment (phiên bản nâng cấp hỗ trợ nhiều lần tạm ứng).
         """
         try:
             # Bước 1: Lấy thông tin chi tiết của instance
             api_response = await lark_service.get_approval_instance(instance_code, access_token)
-            if not api_response:
+            if not api_response or 'data' not in api_response:
                 print(f"❌ Không thể lấy thông tin instance {instance_code}")
                 return False
             
-            # Bước 2: Kiểm tra node có trạng thái phù hợp
-            node_check_result = self.check_pending_allowed_node_in_task_list(api_response)
-            
-            if not node_check_result['found']:
-                print(f"⏭️ Bỏ qua tạo QR - không tìm thấy node phù hợp với cấu hình")
-                return True  # Trả về True vì không phải lỗi, chỉ là bỏ qua
-            
-            # Lấy thông tin node phù hợp
-            matching_node_id = node_check_result['node_id']
-            node_config = node_check_result['node_config']
-            node_strategy = node_check_result['strategy']
-            matched_status = node_check_result.get('matched_status', 'UNKNOWN')
-            required_status = node_check_result.get('required_status', 'PENDING')
-            
-            print(f"✅ Đang xử lý node: {node_config['name']} (chiến lược: {node_strategy})")
-            print(f"   Trạng thái: {matched_status} (yêu cầu: {required_status})")
-            
-            # Bước 3: Trích xuất dữ liệu form
-            if 'data' not in api_response or 'form' not in api_response['data']:
-                print("❌ Không tìm thấy dữ liệu form")
-                return False
-                
-            form_str = api_response['data']['form']
+            task_list = api_response['data'].get('task_list', [])
+            form_str = api_response['data'].get('form', '[]')
             form_data = json.loads(form_str)
+
+            # --- [LOGIC MỚI] Bắt đầu phần tìm kiếm lần tạm ứng hoạt động ---
             
-            # Bước 4: Phát hiện số tiền và loại QR theo chiến lược node
-            amount_result = self.amount_detector.get_amount_and_type_for_node(matching_node_id, form_data)
+            # 2.1: Tìm tất cả các node "Thủ quỹ chi tiền tạm ứng" trong quy trình
+            cashier_nodes = [task for task in task_list if "Thủ quỹ chi tiền tạm ứng" in task.get('node_name', '')]
+            print(f"🔍 Tìm thấy {len(cashier_nodes)} node 'Thủ quỹ chi tiền tạm ứng' trong quy trình.")
+
+            active_advance_info = None
             
-            if not amount_result['success']:
-                print(f"❌ Không thể xác định số tiền/loại QR: {amount_result.get('reason', 'Lỗi không xác định')}")
-                if 'error' in amount_result:
-                    print(f"    Chi tiết lỗi: {amount_result['error']}")
-                return False
-            
-            qr_type = amount_result['qr_type']
-            amount_value = amount_result['amount']
-            field_used = amount_result['field_used']
+            # 2.2: Lặp qua các node thủ quỹ để tìm node đang PENDING
+            for i, node in enumerate(cashier_nodes, 1):
+                node_id = node.get('node_id')
+                node_status = node.get('status')
+                print(f"   - Kiểm tra lần tạm ứng {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+
+                # Điều kiện 1: Node phải ở trạng thái PENDING
+                if node_status == 'PENDING':
+                    # Điều kiện 2: Người dùng phải chọn "Yes" cho lần tạm ứng tương ứng
+                    yes_no_field_name = f"Thanh toán tạm ứng lần {i}: Y/N"
+                    amount_field_name = f"Số tiền tạm ứng lần {i}:"
+
+                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
+                    
+                    if yes_no_value == "Yes":
+                        print(f"     ✅ Điều kiện thỏa mãn: Node PENDING và người dùng chọn 'Yes'.")
+                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
+                        
+                        active_advance_info = {
+                            "amount": amount_value,
+                            "node_id": node_id,
+                            "node_name": node.get('node_name'),
+                            "qr_type": "advance",
+                            "field_used": amount_field_name,
+                            "advance_round": i
+                        }
+                        print(f"     ➡️ Lần tạm ứng {i} được kích hoạt với số tiền: {amount_value}")
+                        break # Tìm thấy rồi thì dừng lại
+                    else:
+                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
+                else:
+                    print(f"     - Bỏ qua: Trạng thái node không phải PENDING.")
+
+            # 2.3: Xử lý kết quả tìm kiếm
+            if not active_advance_info:
+                print(f"⏭️  Không có lần tạm ứng nào đang hoạt động (PENDING và được chọn 'Yes'). Bỏ qua tạo QR.")
+                return True # Coi như thành công vì đã xử lý đúng (bỏ qua)
+
+            # --- [LOGIC MỚI] Kết thúc phần tìm kiếm ---
+
+
+            # --- [PHẦN GIỮ NGUYÊN] Tiếp tục xử lý với thông tin đã tìm được ---
+
+            # Lấy các biến từ kết quả tìm kiếm
+            matching_node_id = active_advance_info['node_id']
+            qr_type = active_advance_info['qr_type']
+            amount_value = active_advance_info['amount']
+            field_used = active_advance_info['field_used']
+            node_name = active_advance_info['node_name']
             
             # Bước 5: Kiểm tra duplicate TRƯỚC KHI tạo QR
             if cache_service.is_qr_recently_generated(
                 instance_code, matching_node_id, qr_type, 
                 settings.QR_CACHE_DURATION_MINUTES
             ):
-                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_config['name']} đã được tạo gần đây")
-                print(f"   → BỎ QUA tạo QR để tránh trùng lặp")
-                return True  # Trả về thành công vì không phải lỗi, chỉ là bỏ qua duplicate
+                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_name} đã được tạo gần đây.")
+                print(f"   → BỎ QUA tạo QR để tránh trùng lặp.")
+                return True
             
-            print(f"💰 Chi tiết tạo QR:")
+            print(f"💰 Chi tiết tạo QR cho lần tạm ứng {active_advance_info['advance_round']}:")
             print(f"   - Loại: {qr_type}")
-            print(f"   - Số tiền: {amount_value:,} VND")
+            print(f"   - Số tiền: {amount_value}")
             print(f"   - Trường sử dụng: {field_used}")
-            print(f"   - Chiến lược node: {node_strategy}")
-            print(f"   - Trạng thái kích hoạt: {matched_status}")
+            print(f"   - Node kích hoạt: {node_name} ({matching_node_id[:8]}...)")
             
             # Bước 6: Validate số tiền
             amount_validation = self.validate_amount_value(amount_value)
@@ -8234,24 +8434,19 @@ class QRProcessor:
                 return False
                 
             amount_int = amount_validation['amount']
-            
+
             # Bước 7: Trích xuất thông tin ngân hàng
             bank_id = self.field_extractor.extract_field_value(form_data, FFN.BANK_NAME)
             account_no = self.field_extractor.extract_field_value(form_data, FFN.BANK_ACCOUNT_NUMBER)
             account_name = self.field_extractor.extract_field_value(form_data, FFN.BENEFICIARY_NAME)
 
-            # Kiểm tra đầy đủ thông tin ngân hàng
             if not all([bank_id, account_no, account_name]):
-                missing_fields = []
-                if not bank_id: missing_fields.append(FFN.BANK_NAME)
-                if not account_no: missing_fields.append(FFN.BANK_ACCOUNT_NUMBER)
-                if not account_name: missing_fields.append(FFN.BENEFICIARY_NAME)
-
-                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing_fields)}")
+                missing = [f for f, v in {FFN.BANK_NAME: bank_id, FFN.BANK_ACCOUNT_NUMBER: account_no, FFN.BENEFICIARY_NAME: account_name}.items() if not v]
+                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing)}")
                 return False
             
             # Bước 8: Tạo mô tả QR theo loại
-            description = vietqr_service.generate_qr_description(qr_type, instance_code)
+            description = vietqr_service.generate_qr_description(f"{qr_type}{active_advance_info['advance_round']}", instance_code)
             
             print(f"🏦 Tạo VietQR với thông tin:")
             print(f"   - Ngân hàng: {bank_id}")
@@ -8274,7 +8469,7 @@ class QRProcessor:
                 return False
             
             # Bước 10: Upload ảnh lên Lark Approval
-            filename = f"{instance_code}_{qr_type}_qr.png"
+            filename = f"{instance_code}_{qr_type}{active_advance_info['advance_round']}_qr.png"
             upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
             
             if not upload_result['success']:
@@ -8290,17 +8485,17 @@ class QRProcessor:
                 file_url=upload_result['file_url'],
                 file_code=upload_result['file_code'],
                 filename=filename,
-                qr_type=qr_type,
+                qr_type=f"{qr_type} Lần {active_advance_info['advance_round']}", # Làm rõ hơn trong comment
                 amount=amount_int,
-                node_name=node_config['name'],
+                node_name=node_name,
                 access_token=access_token
             )
             
             if comment_result['success']:
                 print(f"✅ Hoàn thành xử lý phê duyệt {instance_code}")
-                print(f"💰 Loại: {qr_type.upper()} | Số tiền: {amount_int:,} VND")
-                print(f"🏷️ Node: {node_config['name']} | Trạng thái: {matched_status}")
-                print(f"📋 Trường: {field_used} | Chiến lược: {node_strategy}")
+                print(f"💰 Loại: {qr_type.upper()} LẦN {active_advance_info['advance_round']} | Số tiền: {amount_int:,} VND")
+                print(f"🏷️ Node: {node_name}")
+                print(f"📋 Trường: {field_used}")
                 print(f"💬 ID Comment: {comment_result['comment_id']}")
                 return True
             else:
@@ -8561,7 +8756,13 @@ class ValidationEventHandler:
             # Trích xuất trạng thái từ dữ liệu gốc của sự kiện để tránh gọi API không cần thiết
             raw_data = event_data.get('raw_data', {})
             instance_status = raw_data.get('event', {}).get('object', {}).get('status')
-            
+
+            # Nếu không có trong payload, thì tìm trong event body
+            event_body = raw_data.get('event', {})
+            if not instance_status:
+                instance_status = event_body.get('status')
+
+
             # Kiểm tra xem trạng thái của đơn có nằm trong danh sách cần bỏ qua không
             if instance_status and instance_status in FINAL_STATUSES:
                 print(f"⏭️ [Validation Handler] Bỏ qua instance {instance_code} do có trạng thái cuối cùng: {instance_status}")
@@ -8610,15 +8811,17 @@ class ValidationEventHandler:
             
             print(f"⚠️ [Validation Handler] Phát hiện {len(invalid_results)} vấn đề. Đang kiểm tra cache anti-spam...")
             for result in invalid_results:
-                specific_validation_type = result.validation_type.value
+                # TẠO CACHE KEY CỤ THỂ CHO TỪNG LỖI
+                # Dùng hash của message để đảm bảo mỗi lỗi là duy nhất
+                specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
                 
                 if cache_service.is_validation_alert_recently_sent(
-                    instance_code, specific_validation_type, cache_duration_minutes=10
+                    instance_code, specific_error_key, cache_duration_minutes=10
                 ):
-                    print(f"  🔄 Bỏ qua (đã cache): {specific_validation_type}")
+                    print(f"  🔄 Bỏ qua (đã cache): {result.message[:80]}...") # Log một phần message
                     skipped_count += 1
                 else:
-                    print(f"  🆕 Cần gửi cảnh báo cho: {specific_validation_type}")
+                    print(f"  🆕 Cần gửi cảnh báo cho: {result.message[:80]}...")
                     alerts_to_send.append(result)
 
             # Bước 5: Gửi webhook nếu có cảnh báo mới cần gửi
@@ -8633,9 +8836,10 @@ class ValidationEventHandler:
                 if webhook_sent:
                     print("✅ [Validation Handler] Gửi webhook thành công. Đang cập nhật cache...")
                     for result in alerts_to_send:
-                        specific_validation_type = result.validation_type.value
-                        cache_service.mark_validation_alert_as_sent(instance_code, specific_validation_type)
-                        print(f"  🔒 Đã cache cho: {specific_validation_type}")
+                        # DÙNG LẠI CACHE KEY CỤ THỂ ĐÃ TẠO Ở TRÊN
+                        specific_error_key = f"{result.validation_type.value}_{hash(result.message)}"
+                        cache_service.mark_validation_alert_as_sent(instance_code, specific_error_key)
+                        print(f"  🔒 Đã cache cho: {result.message[:80]}...")
                 else:
                     print("❌ [Validation Handler] Gửi webhook thất bại.")
             else:
@@ -8926,7 +9130,7 @@ class ValidationService:
     Class này cung cấp các quy tắc validation khác nhau để kiểm tra
     tính nhất quán và hợp lệ của dữ liệu trong quy trình phê duyệt:
     
-    - ADVANCE_AMOUNT_MISMATCH: So sánh số tiền tạm ứng
+    - ADVANCE_AMOUNT_MISMATCH: So sánh tổng số tiền tạm ứng
     - PAYMENT_AMOUNT_MISMATCH: So sánh số tiền thanh toán
     - TOTAL_AMOUNT_MISMATCH: Kiểm tra tổng số tiền thanh toán
     - WORKFLOW_STATUS: Kiểm tra trạng thái node
@@ -8947,64 +9151,77 @@ class ValidationService:
         """Khởi tạo ValidationService với field extractor và mapping rules."""
         self.field_extractor = FieldExtractor()
         
-        # Mapping đã được cập nhật với các enum và tên hàm mới, cụ thể hơn
         self.validation_rules = {
             ValidationType.ADVANCE_AMOUNT_MISMATCH: self.validate_advance_amount_mismatch,
             ValidationType.PAYMENT_AMOUNT_MISMATCH: self.validate_payment_amount_mismatch,
-            ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
+            #ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
             ValidationType.WORKFLOW_STATUS: self.validate_workflow_status,
             ValidationType.FIELD_CONSISTENCY: self.validate_field_consistency,
         }
     
-    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+    # Thay vì trả về ValidationResult, giờ đây hàm sẽ trả về List[ValidationResult]
+    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
         """
-        Validation số tiền tạm ứng giữa fieldList và top-level field.
-        
-        So sánh giá trị "Số tiền chi" trong fieldList "Kế toán - Thông tin tạm ứng" 
-        với "Số tiền tạm ứng" ở top-level để đảm bảo tính nhất quán.
+        Trả về một danh sách các ValidationResult, mỗi result cho một lỗi.
         """
         try:
-            advance_amount_from_fieldlist = self.field_extractor.extract_field_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT 
-            )
-            advance_amount_toplevel = self.field_extractor.extract_field_value(
-                form_data, FFN.ADVANCE_AMOUNT
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
             )
             
-            if advance_amount_from_fieldlist is None or advance_amount_toplevel is None:
-                return ValidationResult.create_skipped(
+            results = []
+            found_data = False
+
+            for i in range(1, 5): # Chỉ kiểm tra 4 lần
+                user_advance_field = f"Số tiền tạm ứng lần {i}:"
+                user_advance_value = self.field_extractor.extract_field_value(form_data, user_advance_field)
+                
+                if user_advance_value is not None:
+                    found_data = True
+
+                if (i - 1) >= len(accountant_expenditures) or user_advance_value is None:
+                    continue
+                
+                accountant_expenditure_value = accountant_expenditures[i-1]
+                
+                try:
+                    user_amount = float(user_advance_value)
+                    accountant_amount = float(accountant_expenditure_value)
+                    
+                    if abs(user_amount - accountant_amount) >= 0.01:
+                        message = (f"❌ Lỗi Tạm ứng Lần {i}: Yêu cầu ({user_amount:,.0f}) ≠ Kế toán chi ({accountant_amount:,.0f}). "
+                                f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
+                        # Tạo một result riêng cho lỗi này
+                        results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+                except (ValueError, TypeError):
+                    message = f"❌ Lỗi định dạng số Tạm ứng Lần {i}."
+                    results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+
+            # Nếu không có lỗi nào được tìm thấy và có dữ liệu để kiểm tra
+            if not results and found_data:
+                results.append(ValidationResult.create_valid(
                     ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "ℹ️ Bỏ qua: Không tìm thấy đủ các trường về số tiền tạm ứng để so sánh."
-                )
+                    "✅ Tất cả các lần tạm ứng đã khớp."
+                ))
             
-            fieldlist_amount = float(advance_amount_from_fieldlist)
-            toplevel_amount = float(advance_amount_toplevel)
+            # Nếu không có dữ liệu để kiểm tra
+            if not found_data:
+                results.append(ValidationResult.create_skipped(
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
+                ))
             
-            if abs(fieldlist_amount - toplevel_amount) < 0.01:
-                return ValidationResult.create_valid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"✅ Số tiền tạm ứng nhất quán: {fieldlist_amount:,} VND"
-                )
-            else:
-                return ValidationResult.create_invalid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tạm ứng: '{FFN.EXPENDITURE_AMOUNT}' ({fieldlist_amount:,}) ≠ '{FFN.ADVANCE_AMOUNT}' ({toplevel_amount:,}). Chênh lệch: {abs(fieldlist_amount - toplevel_amount):,} VND",
-                    {"fieldlist_amount": fieldlist_amount, "toplevel_amount": toplevel_amount}
-                )
-        except (ValueError, TypeError) as e:
-            return ValidationResult.create_error(
-                ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền tạm ứng: {e}",
-            )
+            return results
+                
         except Exception as e:
-            return ValidationResult.create_error(
+            return [ValidationResult.create_error(
                 ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền tạm ứng: {e}",
-            )
+                f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}",
+            )]
 
     def validate_payment_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tính nhất quán số tiền thanh toán.
+        Validation tính nhất quán số tiền thanh toán (giữ nguyên logic cũ).
         
         So sánh "Kế toán - Thông tin thanh toán" với "Số tiền còn phải thanh toán" 
         hoặc "Số tiền thanh toán".
@@ -9035,69 +9252,81 @@ class ValidationService:
             if abs(payment_info_float - compare_amount_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,} VND"
+                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
                 )
             else:
-                return ValidationResult.create_invalid(
-                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,}) ≠ '{compare_field_name}' ({compare_amount_float:,}). Chênh lệch: {abs(payment_info_float - compare_amount_float):,} VND",
-                    {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
-                )
+                message = (f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,.0f}) ≠ "
+                           f"'{compare_field_name}' ({compare_amount_float:,.0f}). "
+                           f"Chênh lệch: {abs(payment_info_float - compare_amount_float):,.0f} VND")
+                details = {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
+                return ValidationResult.create_invalid(ValidationType.PAYMENT_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
             )
 
     def validate_total_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tổng số tiền thanh toán.
+        Validation tổng số tiền thanh toán dựa trên các khoản chi đã được kế toán xác nhận.
         
-        Kiểm tra công thức: Total = Tạm ứng + Còn phải thanh toán (hoặc các biến thể khác).
+        Công thức: Total = (Tổng các khoản chi trong FieldList "Kế toán - Thông tin tạm ứng") + (Số tiền còn phải thanh toán).
         """
         try:
-            advance_amount = self.field_extractor.extract_field_value(form_data, FFN.ADVANCE_AMOUNT)
+            # Lấy tổng các khoản chi tạm ứng THỰC TẾ từ kế toán
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
+            )
+            total_accountant_advance = sum(float(v) for v in accountant_expenditures if v is not None and str(v).strip() != '')
+
+            # Lấy các trường còn lại
             amount_due = self.field_extractor.extract_field_value(form_data, FFN.REMAINING_PAYMENT_AMOUNT)
             total_payment_actual = self.field_extractor.extract_field_value(form_data, FFN.TOTAL_PAYMENT_AMOUNT)
 
-            if advance_amount is None or total_payment_actual is None or amount_due is None:
+            if total_accountant_advance == 0 and amount_due is None:
                 return ValidationResult.create_skipped(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Không tìm thấy đủ các trường '{FFN.ADVANCE_AMOUNT}', '{FFN.REMAINING_PAYMENT_AMOUNT}', '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                    f"ℹ️ Bỏ qua: Kế toán chưa điền thông tin chi hoặc số tiền còn lại."
                 )
 
-            advance_float = float(advance_amount)
-            amount_due_float = float(amount_due)
+            if total_payment_actual is None:
+                return ValidationResult.create_skipped(
+                    ValidationType.TOTAL_AMOUNT_MISMATCH,
+                    f"ℹ️ Bỏ qua: Không tìm thấy trường '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                )
+
+            amount_due_float = float(amount_due) if amount_due is not None else 0.0
             total_actual_float = float(total_payment_actual)
             
-            total_expected = advance_float + amount_due_float
+            total_expected = total_accountant_advance + amount_due_float
 
             if abs(total_expected - total_actual_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,} VND"
+                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,.0f} VND"
                 )
             else:
-                case_description = f"{FFN.ADVANCE_AMOUNT} ({advance_float:,}) + {FFN.REMAINING_PAYMENT_AMOUNT} ({amount_due_float:,})"
-                return ValidationResult.create_invalid(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tổng tiền: ({total_actual_float:,}) ≠ ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
-                    {"total_expected": total_expected, "total_actual": total_actual_float}
-                )
+                case_description = f"Tổng Kế toán chi ({total_accountant_advance:,.0f}) + Còn Lại ({amount_due_float:,.0f})"
+                message = (f"❌ Lỗi tổng tiền: Thực tế ({total_actual_float:,.0f}) ≠ "
+                        f"Dự kiến ({total_expected:,.0f} từ {case_description}). "
+                        f"Chênh lệch: {abs(total_expected - total_actual_float):,.0f} VND")
+                details = {
+                    "total_expected": total_expected, 
+                    "total_actual": total_actual_float,
+                    "total_accountant_advance": total_accountant_advance,
+                    "remaining_payment": amount_due_float
+                }
+                return ValidationResult.create_invalid(ValidationType.TOTAL_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
             )
     
     def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
@@ -9160,20 +9389,25 @@ class ValidationService:
         print(f"🚀 Bắt đầu chạy tất cả validation cho node {node_id[:8]}...")
         results = []
         
-        # Vòng lặp này giúp tự động chạy tất cả các rule đã định nghĩa trong __init__
-        # Giúp code dễ mở rộng và bảo trì hơn
         for validation_type in self.validation_rules.keys():
             print(f"▶️ Đang chạy: {validation_type.value}...")
-            result = self.run_validation(
-                validation_type, 
+            # Sử dụng extend để xử lý việc một rule có thể trả về nhiều result
+            validation_func = self.validation_rules[validation_type]
+            
+            # Cần kiểm tra xem hàm có trả về list hay không
+            # Vì các hàm khác vẫn trả về 1 result đơn lẻ
+            result_or_list = validation_func(
                 form_data=form_data,
                 task_list=task_list,
                 node_id=node_id
             )
-            results.append(result)
 
-        # Tổng kết kết quả
-        invalid_count = sum(1 for r in results if r.status == ValidationStatus.INVALID)
+            if isinstance(result_or_list, list):
+                results.extend(result_or_list)
+            else:
+                results.append(result_or_list)
+
+        invalid_count = sum(1 for r in results if not r.is_valid)
         print(f"📈 Hoàn thành validation: Tìm thấy {invalid_count} vấn đề.")
         
         return results
@@ -9290,7 +9524,6 @@ FILE: README.md
                                         │    ↓                        │
                                         │✅ Return success            │
                                         └─────────────────────────────┘
-
 ============================================================
 
 ============================================================

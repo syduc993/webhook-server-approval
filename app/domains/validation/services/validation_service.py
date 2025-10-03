@@ -13,7 +13,7 @@ class ValidationService:
     Class này cung cấp các quy tắc validation khác nhau để kiểm tra
     tính nhất quán và hợp lệ của dữ liệu trong quy trình phê duyệt:
     
-    - ADVANCE_AMOUNT_MISMATCH: So sánh số tiền tạm ứng
+    - ADVANCE_AMOUNT_MISMATCH: So sánh tổng số tiền tạm ứng
     - PAYMENT_AMOUNT_MISMATCH: So sánh số tiền thanh toán
     - TOTAL_AMOUNT_MISMATCH: Kiểm tra tổng số tiền thanh toán
     - WORKFLOW_STATUS: Kiểm tra trạng thái node
@@ -34,64 +34,77 @@ class ValidationService:
         """Khởi tạo ValidationService với field extractor và mapping rules."""
         self.field_extractor = FieldExtractor()
         
-        # Mapping đã được cập nhật với các enum và tên hàm mới, cụ thể hơn
         self.validation_rules = {
             ValidationType.ADVANCE_AMOUNT_MISMATCH: self.validate_advance_amount_mismatch,
             ValidationType.PAYMENT_AMOUNT_MISMATCH: self.validate_payment_amount_mismatch,
-            ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
+            #ValidationType.TOTAL_AMOUNT_MISMATCH: self.validate_total_amount_mismatch,
             ValidationType.WORKFLOW_STATUS: self.validate_workflow_status,
             ValidationType.FIELD_CONSISTENCY: self.validate_field_consistency,
         }
     
-    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
+    # Thay vì trả về ValidationResult, giờ đây hàm sẽ trả về List[ValidationResult]
+    def validate_advance_amount_mismatch(self, form_data: List[Dict], **kwargs) -> List[ValidationResult]:
         """
-        Validation số tiền tạm ứng giữa fieldList và top-level field.
-        
-        So sánh giá trị "Số tiền chi" trong fieldList "Kế toán - Thông tin tạm ứng" 
-        với "Số tiền tạm ứng" ở top-level để đảm bảo tính nhất quán.
+        Trả về một danh sách các ValidationResult, mỗi result cho một lỗi.
         """
         try:
-            advance_amount_from_fieldlist = self.field_extractor.extract_field_from_fieldlist(
-                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT 
-            )
-            advance_amount_toplevel = self.field_extractor.extract_field_value(
-                form_data, FFN.ADVANCE_AMOUNT
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
             )
             
-            if advance_amount_from_fieldlist is None or advance_amount_toplevel is None:
-                return ValidationResult.create_skipped(
+            results = []
+            found_data = False
+
+            for i in range(1, 5): # Chỉ kiểm tra 4 lần
+                user_advance_field = f"Số tiền tạm ứng lần {i}:"
+                user_advance_value = self.field_extractor.extract_field_value(form_data, user_advance_field)
+                
+                if user_advance_value is not None:
+                    found_data = True
+
+                if (i - 1) >= len(accountant_expenditures) or user_advance_value is None:
+                    continue
+                
+                accountant_expenditure_value = accountant_expenditures[i-1]
+                
+                try:
+                    user_amount = float(user_advance_value)
+                    accountant_amount = float(accountant_expenditure_value)
+                    
+                    if abs(user_amount - accountant_amount) >= 0.01:
+                        message = (f"❌ Lỗi Tạm ứng Lần {i}: Yêu cầu ({user_amount:,.0f}) ≠ Kế toán chi ({accountant_amount:,.0f}). "
+                                f"Lệch: {abs(user_amount - accountant_amount):,.0f} VND")
+                        # Tạo một result riêng cho lỗi này
+                        results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+                except (ValueError, TypeError):
+                    message = f"❌ Lỗi định dạng số Tạm ứng Lần {i}."
+                    results.append(ValidationResult.create_invalid(ValidationType.ADVANCE_AMOUNT_MISMATCH, message))
+
+            # Nếu không có lỗi nào được tìm thấy và có dữ liệu để kiểm tra
+            if not results and found_data:
+                results.append(ValidationResult.create_valid(
                     ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    "ℹ️ Bỏ qua: Không tìm thấy đủ các trường về số tiền tạm ứng để so sánh."
-                )
+                    "✅ Tất cả các lần tạm ứng đã khớp."
+                ))
             
-            fieldlist_amount = float(advance_amount_from_fieldlist)
-            toplevel_amount = float(advance_amount_toplevel)
+            # Nếu không có dữ liệu để kiểm tra
+            if not found_data:
+                results.append(ValidationResult.create_skipped(
+                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
+                    "ℹ️ Bỏ qua: Không tìm thấy dữ liệu tạm ứng để so sánh."
+                ))
             
-            if abs(fieldlist_amount - toplevel_amount) < 0.01:
-                return ValidationResult.create_valid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"✅ Số tiền tạm ứng nhất quán: {fieldlist_amount:,} VND"
-                )
-            else:
-                return ValidationResult.create_invalid(
-                    ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tạm ứng: '{FFN.EXPENDITURE_AMOUNT}' ({fieldlist_amount:,}) ≠ '{FFN.ADVANCE_AMOUNT}' ({toplevel_amount:,}). Chênh lệch: {abs(fieldlist_amount - toplevel_amount):,} VND",
-                    {"fieldlist_amount": fieldlist_amount, "toplevel_amount": toplevel_amount}
-                )
-        except (ValueError, TypeError) as e:
-            return ValidationResult.create_error(
-                ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền tạm ứng: {e}",
-            )
+            return results
+                
         except Exception as e:
-            return ValidationResult.create_error(
+            return [ValidationResult.create_error(
                 ValidationType.ADVANCE_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền tạm ứng: {e}",
-            )
+                f"❌ Lỗi hệ thống khi validation tiền tạm ứng: {e}",
+            )]
 
     def validate_payment_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tính nhất quán số tiền thanh toán.
+        Validation tính nhất quán số tiền thanh toán (giữ nguyên logic cũ).
         
         So sánh "Kế toán - Thông tin thanh toán" với "Số tiền còn phải thanh toán" 
         hoặc "Số tiền thanh toán".
@@ -122,69 +135,81 @@ class ValidationService:
             if abs(payment_info_float - compare_amount_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,} VND"
+                    f"✅ Số tiền thanh toán nhất quán: {payment_info_float:,.0f} VND"
                 )
             else:
-                return ValidationResult.create_invalid(
-                    ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                    f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,}) ≠ '{compare_field_name}' ({compare_amount_float:,}). Chênh lệch: {abs(payment_info_float - compare_amount_float):,} VND",
-                    {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
-                )
+                message = (f"❌ Lỗi thanh toán: 'Kế toán' ({payment_info_float:,.0f}) ≠ "
+                           f"'{compare_field_name}' ({compare_amount_float:,.0f}). "
+                           f"Chênh lệch: {abs(payment_info_float - compare_amount_float):,.0f} VND")
+                details = {"payment_info_amount": payment_info_float, "compare_amount": compare_amount_float}
+                return ValidationResult.create_invalid(ValidationType.PAYMENT_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số tiền thanh toán: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.PAYMENT_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
+                ValidationType.PAYMENT_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tiền thanh toán: {e}",
             )
 
     def validate_total_amount_mismatch(self, form_data: List[Dict], **kwargs) -> ValidationResult:
         """
-        Validation tổng số tiền thanh toán.
+        Validation tổng số tiền thanh toán dựa trên các khoản chi đã được kế toán xác nhận.
         
-        Kiểm tra công thức: Total = Tạm ứng + Còn phải thanh toán (hoặc các biến thể khác).
+        Công thức: Total = (Tổng các khoản chi trong FieldList "Kế toán - Thông tin tạm ứng") + (Số tiền còn phải thanh toán).
         """
         try:
-            advance_amount = self.field_extractor.extract_field_value(form_data, FFN.ADVANCE_AMOUNT)
+            # Lấy tổng các khoản chi tạm ứng THỰC TẾ từ kế toán
+            accountant_expenditures = self.field_extractor.extract_all_values_from_fieldlist(
+                form_data, FFN.ACCOUNTING_ADVANCE_INFO, FFN.EXPENDITURE_AMOUNT
+            )
+            total_accountant_advance = sum(float(v) for v in accountant_expenditures if v is not None and str(v).strip() != '')
+
+            # Lấy các trường còn lại
             amount_due = self.field_extractor.extract_field_value(form_data, FFN.REMAINING_PAYMENT_AMOUNT)
             total_payment_actual = self.field_extractor.extract_field_value(form_data, FFN.TOTAL_PAYMENT_AMOUNT)
 
-            if advance_amount is None or total_payment_actual is None or amount_due is None:
+            if total_accountant_advance == 0 and amount_due is None:
                 return ValidationResult.create_skipped(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"ℹ️ Bỏ qua: Không tìm thấy đủ các trường '{FFN.ADVANCE_AMOUNT}', '{FFN.REMAINING_PAYMENT_AMOUNT}', '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                    f"ℹ️ Bỏ qua: Kế toán chưa điền thông tin chi hoặc số tiền còn lại."
                 )
 
-            advance_float = float(advance_amount)
-            amount_due_float = float(amount_due)
+            if total_payment_actual is None:
+                return ValidationResult.create_skipped(
+                    ValidationType.TOTAL_AMOUNT_MISMATCH,
+                    f"ℹ️ Bỏ qua: Không tìm thấy trường '{FFN.TOTAL_PAYMENT_AMOUNT}' để tính tổng."
+                )
+
+            amount_due_float = float(amount_due) if amount_due is not None else 0.0
             total_actual_float = float(total_payment_actual)
             
-            total_expected = advance_float + amount_due_float
+            total_expected = total_accountant_advance + amount_due_float
 
             if abs(total_expected - total_actual_float) < 0.01:
                 return ValidationResult.create_valid(
                     ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,} VND"
+                    f"✅ Tổng số tiền hợp lệ: {total_actual_float:,.0f} VND"
                 )
             else:
-                case_description = f"{FFN.ADVANCE_AMOUNT} ({advance_float:,}) + {FFN.REMAINING_PAYMENT_AMOUNT} ({amount_due_float:,})"
-                return ValidationResult.create_invalid(
-                    ValidationType.TOTAL_AMOUNT_MISMATCH,
-                    f"❌ Lỗi tổng tiền: ({total_actual_float:,}) ≠ ({total_expected:,} từ {case_description}). Chênh lệch: {abs(total_expected - total_actual_float):,} VND",
-                    {"total_expected": total_expected, "total_actual": total_actual_float}
-                )
+                case_description = f"Tổng Kế toán chi ({total_accountant_advance:,.0f}) + Còn Lại ({amount_due_float:,.0f})"
+                message = (f"❌ Lỗi tổng tiền: Thực tế ({total_actual_float:,.0f}) ≠ "
+                        f"Dự kiến ({total_expected:,.0f} từ {case_description}). "
+                        f"Chênh lệch: {abs(total_expected - total_actual_float):,.0f} VND")
+                details = {
+                    "total_expected": total_expected, 
+                    "total_actual": total_actual_float,
+                    "total_accountant_advance": total_accountant_advance,
+                    "remaining_payment": amount_due_float
+                }
+                return ValidationResult.create_invalid(ValidationType.TOTAL_AMOUNT_MISMATCH, message, details)
         except (ValueError, TypeError) as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi định dạng số khi tính tổng tiền: {e}",
             )
         except Exception as e:
             return ValidationResult.create_error(
-                ValidationType.TOTAL_AMOUNT_MISMATCH,
-                f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
+                ValidationType.TOTAL_AMOUNT_MISMATCH, f"❌ Lỗi không xác định khi validation tổng tiền: {e}",
             )
     
     def validate_workflow_status(self, task_list: List[Dict], node_id: str, **kwargs) -> ValidationResult:
@@ -247,20 +272,25 @@ class ValidationService:
         print(f"🚀 Bắt đầu chạy tất cả validation cho node {node_id[:8]}...")
         results = []
         
-        # Vòng lặp này giúp tự động chạy tất cả các rule đã định nghĩa trong __init__
-        # Giúp code dễ mở rộng và bảo trì hơn
         for validation_type in self.validation_rules.keys():
             print(f"▶️ Đang chạy: {validation_type.value}...")
-            result = self.run_validation(
-                validation_type, 
+            # Sử dụng extend để xử lý việc một rule có thể trả về nhiều result
+            validation_func = self.validation_rules[validation_type]
+            
+            # Cần kiểm tra xem hàm có trả về list hay không
+            # Vì các hàm khác vẫn trả về 1 result đơn lẻ
+            result_or_list = validation_func(
                 form_data=form_data,
                 task_list=task_list,
                 node_id=node_id
             )
-            results.append(result)
 
-        # Tổng kết kết quả
-        invalid_count = sum(1 for r in results if r.status == ValidationStatus.INVALID)
+            if isinstance(result_or_list, list):
+                results.extend(result_or_list)
+            else:
+                results.append(result_or_list)
+
+        invalid_count = sum(1 for r in results if not r.is_valid)
         print(f"📈 Hoàn thành validation: Tìm thấy {invalid_count} vấn đề.")
         
         return results

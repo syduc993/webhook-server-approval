@@ -1,12 +1,14 @@
 import json
 from app.core.config.settings import settings
+# NODE_CONFIG và AmountDetector không còn cần thiết cho logic chính, nhưng giữ lại import để không ảnh hưởng các hàm phụ
 from app.core.config.node_config import NODE_CONFIG
 from app.core.config.field_constants import FFN
 from app.core.infrastructure.lark_service import lark_service
 from app.core.infrastructure.cache_service import cache_service
 from app.core.utils.field_extractor import FieldExtractor
 from app.domains.qr_generation.services.vietqr_service import vietqr_service
-from app.domains.qr_generation.services.amount_detector import AmountDetector
+# AmountDetector không còn được sử dụng trong hàm chính nữa
+# from app.domains.qr_generation.services.amount_detector import AmountDetector
 from app.domains.qr_generation.models import QRType, BankInfo
 
 class QRProcessor:
@@ -18,39 +20,23 @@ class QRProcessor:
     
     Attributes:
         field_extractor (FieldExtractor): Bộ trích xuất trường dữ liệu từ form
-        amount_detector (AmountDetector): Bộ phát hiện và xác định số tiền
     """
 
     def __init__(self):
         """Khởi tạo QRProcessor với các service cần thiết."""
         self.field_extractor = FieldExtractor()
-        self.amount_detector = AmountDetector()
+        # self.amount_detector không còn cần thiết nữa
+        # self.amount_detector = AmountDetector()
 
+    # --- HÀM CŨ NÀY VẪN GIỮ LẠI NHƯNG KHÔNG ĐƯỢC GỌI TRONG HÀM CHÍNH ---
     def check_pending_allowed_node_in_task_list(self, api_response: dict, node_config: dict = None) -> dict:
         """
         Kiểm tra node có trạng thái phù hợp và đáp ứng các điều kiện bổ sung.
-        
-        Phương thức này sẽ duyệt qua danh sách task và tìm node đầu tiên
-        thỏa mãn cả trạng thái chính và các điều kiện phụ.
-        
-        Args:
-            api_response (dict): Phản hồi API từ Lark chứa thông tin instance
-            node_config (dict, optional): Cấu hình node. Defaults to NODE_CONFIG.
-            
-        Returns:
-            dict: Kết quả kiểm tra bao gồm:
-                - found (bool): Có tìm thấy node phù hợp không
-                - node_id (str): ID của node tìm thấy
-                - node_config (dict): Cấu hình của node
-                - strategy (str): Chiến lược xử lý
-                - matched_status (str): Trạng thái hiện tại
-                - required_status (str): Trạng thái yêu cầu
-                - all_tasks (list): Danh sách tất cả task
-                - node_status_map (dict): Map trạng thái của các node
+        (Hàm này không còn được sử dụng trong luồng chính tạo QR động)
         """
         if node_config is None:
             node_config = NODE_CONFIG
-            
+        # ... logic của hàm cũ giữ nguyên ...
         try:
             # Trích xuất dữ liệu từ API response
             data = api_response.get('data', {})
@@ -155,24 +141,15 @@ class QRProcessor:
                 'all_matching_configured': []
             }
 
+
     def validate_amount_value(self, amount_value) -> dict:
         """
         Validate và chuyển đổi giá trị số tiền.
-        
-        Args:
-            amount_value: Giá trị số tiền cần validate (có thể là string, int, float)
-            
-        Returns:
-            dict: Kết quả validation bao gồm:
-                - valid (bool): Giá trị có hợp lệ không
-                - amount (int): Giá trị số tiền đã chuyển đổi
-                - error (str): Thông báo lỗi nếu có
         """
         try:
             if amount_value is None:
                 return {'valid': False, 'amount': None, 'error': 'Số tiền không được để trống'}
-                
-            # Chuyển đổi sang float trước, sau đó sang int
+            
             amount_float = float(amount_value)
             amount_int = int(amount_float)
             
@@ -186,83 +163,91 @@ class QRProcessor:
 
     async def process_approval_with_qr_comment(self, instance_code: str, access_token: str) -> bool:
         """
-        Xử lý phê duyệt với tạo QR code và comment.
-        
-        Đây là phương thức chính xử lý toàn bộ quy trình:
-        1. Lấy thông tin instance từ Lark
-        2. Kiểm tra node phù hợp với cấu hình
-        3. Trích xuất và validate dữ liệu form
-        4. Kiểm tra duplicate để tránh tạo QR trùng lặp
-        5. Tạo mã VietQR
-        6. Upload và tạo comment
-        
-        Args:
-            instance_code (str): Mã instance phê duyệt
-            access_token (str): Token để truy cập Lark API
-            
-        Returns:
-            bool: True nếu xử lý thành công, False nếu có lỗi
+        Xử lý phê duyệt với tạo QR code và comment (phiên bản nâng cấp hỗ trợ nhiều lần tạm ứng).
         """
         try:
             # Bước 1: Lấy thông tin chi tiết của instance
             api_response = await lark_service.get_approval_instance(instance_code, access_token)
-            if not api_response:
+            if not api_response or 'data' not in api_response:
                 print(f"❌ Không thể lấy thông tin instance {instance_code}")
                 return False
             
-            # Bước 2: Kiểm tra node có trạng thái phù hợp
-            node_check_result = self.check_pending_allowed_node_in_task_list(api_response)
-            
-            if not node_check_result['found']:
-                print(f"⏭️ Bỏ qua tạo QR - không tìm thấy node phù hợp với cấu hình")
-                return True  # Trả về True vì không phải lỗi, chỉ là bỏ qua
-            
-            # Lấy thông tin node phù hợp
-            matching_node_id = node_check_result['node_id']
-            node_config = node_check_result['node_config']
-            node_strategy = node_check_result['strategy']
-            matched_status = node_check_result.get('matched_status', 'UNKNOWN')
-            required_status = node_check_result.get('required_status', 'PENDING')
-            
-            print(f"✅ Đang xử lý node: {node_config['name']} (chiến lược: {node_strategy})")
-            print(f"   Trạng thái: {matched_status} (yêu cầu: {required_status})")
-            
-            # Bước 3: Trích xuất dữ liệu form
-            if 'data' not in api_response or 'form' not in api_response['data']:
-                print("❌ Không tìm thấy dữ liệu form")
-                return False
-                
-            form_str = api_response['data']['form']
+            task_list = api_response['data'].get('task_list', [])
+            form_str = api_response['data'].get('form', '[]')
             form_data = json.loads(form_str)
+
+            # --- [LOGIC MỚI] Bắt đầu phần tìm kiếm lần tạm ứng hoạt động ---
             
-            # Bước 4: Phát hiện số tiền và loại QR theo chiến lược node
-            amount_result = self.amount_detector.get_amount_and_type_for_node(matching_node_id, form_data)
+            # 2.1: Tìm tất cả các node "Thủ quỹ chi tiền tạm ứng" trong quy trình
+            cashier_nodes = [task for task in task_list if "Thủ quỹ chi tiền tạm ứng" in task.get('node_name', '')]
+            print(f"🔍 Tìm thấy {len(cashier_nodes)} node 'Thủ quỹ chi tiền tạm ứng' trong quy trình.")
+
+            active_advance_info = None
             
-            if not amount_result['success']:
-                print(f"❌ Không thể xác định số tiền/loại QR: {amount_result.get('reason', 'Lỗi không xác định')}")
-                if 'error' in amount_result:
-                    print(f"    Chi tiết lỗi: {amount_result['error']}")
-                return False
-            
-            qr_type = amount_result['qr_type']
-            amount_value = amount_result['amount']
-            field_used = amount_result['field_used']
+            # 2.2: Lặp qua các node thủ quỹ để tìm node đang PENDING
+            for i, node in enumerate(cashier_nodes, 1):
+                node_id = node.get('node_id')
+                node_status = node.get('status')
+                print(f"   - Kiểm tra lần tạm ứng {i} (Node ID: {node_id[:8]}..., Trạng thái: {node_status})...")
+
+                # Điều kiện 1: Node phải ở trạng thái PENDING
+                if node_status == 'PENDING':
+                    # Điều kiện 2: Người dùng phải chọn "Yes" cho lần tạm ứng tương ứng
+                    yes_no_field_name = f"Thanh toán tạm ứng lần {i}: Y/N"
+                    amount_field_name = f"Số tiền tạm ứng lần {i}:"
+
+                    yes_no_value = self.field_extractor.extract_field_value(form_data, yes_no_field_name)
+                    
+                    if yes_no_value == "Yes":
+                        print(f"     ✅ Điều kiện thỏa mãn: Node PENDING và người dùng chọn 'Yes'.")
+                        amount_value = self.field_extractor.extract_field_value(form_data, amount_field_name)
+                        
+                        active_advance_info = {
+                            "amount": amount_value,
+                            "node_id": node_id,
+                            "node_name": node.get('node_name'),
+                            "qr_type": "advance",
+                            "field_used": amount_field_name,
+                            "advance_round": i
+                        }
+                        print(f"     ➡️ Lần tạm ứng {i} được kích hoạt với số tiền: {amount_value}")
+                        break # Tìm thấy rồi thì dừng lại
+                    else:
+                        print(f"     - Bỏ qua: Người dùng không chọn 'Yes' cho lần {i} (Giá trị: {yes_no_value}).")
+                else:
+                    print(f"     - Bỏ qua: Trạng thái node không phải PENDING.")
+
+            # 2.3: Xử lý kết quả tìm kiếm
+            if not active_advance_info:
+                print(f"⏭️  Không có lần tạm ứng nào đang hoạt động (PENDING và được chọn 'Yes'). Bỏ qua tạo QR.")
+                return True # Coi như thành công vì đã xử lý đúng (bỏ qua)
+
+            # --- [LOGIC MỚI] Kết thúc phần tìm kiếm ---
+
+
+            # --- [PHẦN GIỮ NGUYÊN] Tiếp tục xử lý với thông tin đã tìm được ---
+
+            # Lấy các biến từ kết quả tìm kiếm
+            matching_node_id = active_advance_info['node_id']
+            qr_type = active_advance_info['qr_type']
+            amount_value = active_advance_info['amount']
+            field_used = active_advance_info['field_used']
+            node_name = active_advance_info['node_name']
             
             # Bước 5: Kiểm tra duplicate TRƯỚC KHI tạo QR
             if cache_service.is_qr_recently_generated(
                 instance_code, matching_node_id, qr_type, 
                 settings.QR_CACHE_DURATION_MINUTES
             ):
-                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_config['name']} đã được tạo gần đây")
-                print(f"   → BỎ QUA tạo QR để tránh trùng lặp")
-                return True  # Trả về thành công vì không phải lỗi, chỉ là bỏ qua duplicate
+                print(f"⚠️ PHÁT HIỆN TRÙNG LẶP: QR {qr_type.upper()} cho node {node_name} đã được tạo gần đây.")
+                print(f"   → BỎ QUA tạo QR để tránh trùng lặp.")
+                return True
             
-            print(f"💰 Chi tiết tạo QR:")
+            print(f"💰 Chi tiết tạo QR cho lần tạm ứng {active_advance_info['advance_round']}:")
             print(f"   - Loại: {qr_type}")
-            print(f"   - Số tiền: {amount_value:,} VND")
+            print(f"   - Số tiền: {amount_value}")
             print(f"   - Trường sử dụng: {field_used}")
-            print(f"   - Chiến lược node: {node_strategy}")
-            print(f"   - Trạng thái kích hoạt: {matched_status}")
+            print(f"   - Node kích hoạt: {node_name} ({matching_node_id[:8]}...)")
             
             # Bước 6: Validate số tiền
             amount_validation = self.validate_amount_value(amount_value)
@@ -271,24 +256,19 @@ class QRProcessor:
                 return False
                 
             amount_int = amount_validation['amount']
-            
+
             # Bước 7: Trích xuất thông tin ngân hàng
             bank_id = self.field_extractor.extract_field_value(form_data, FFN.BANK_NAME)
             account_no = self.field_extractor.extract_field_value(form_data, FFN.BANK_ACCOUNT_NUMBER)
             account_name = self.field_extractor.extract_field_value(form_data, FFN.BENEFICIARY_NAME)
 
-            # Kiểm tra đầy đủ thông tin ngân hàng
             if not all([bank_id, account_no, account_name]):
-                missing_fields = []
-                if not bank_id: missing_fields.append(FFN.BANK_NAME)
-                if not account_no: missing_fields.append(FFN.BANK_ACCOUNT_NUMBER)
-                if not account_name: missing_fields.append(FFN.BENEFICIARY_NAME)
-
-                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing_fields)}")
+                missing = [f for f, v in {FFN.BANK_NAME: bank_id, FFN.BANK_ACCOUNT_NUMBER: account_no, FFN.BENEFICIARY_NAME: account_name}.items() if not v]
+                print(f"❌ Thiếu thông tin ngân hàng: {', '.join(missing)}")
                 return False
             
             # Bước 8: Tạo mô tả QR theo loại
-            description = vietqr_service.generate_qr_description(qr_type, instance_code)
+            description = vietqr_service.generate_qr_description(f"{qr_type}{active_advance_info['advance_round']}", instance_code)
             
             print(f"🏦 Tạo VietQR với thông tin:")
             print(f"   - Ngân hàng: {bank_id}")
@@ -311,7 +291,7 @@ class QRProcessor:
                 return False
             
             # Bước 10: Upload ảnh lên Lark Approval
-            filename = f"{instance_code}_{qr_type}_qr.png"
+            filename = f"{instance_code}_{qr_type}{active_advance_info['advance_round']}_qr.png"
             upload_result = await lark_service.upload_image_to_approval(qr_image_buffer, filename, access_token)
             
             if not upload_result['success']:
@@ -327,17 +307,17 @@ class QRProcessor:
                 file_url=upload_result['file_url'],
                 file_code=upload_result['file_code'],
                 filename=filename,
-                qr_type=qr_type,
+                qr_type=f"{qr_type} Lần {active_advance_info['advance_round']}", # Làm rõ hơn trong comment
                 amount=amount_int,
-                node_name=node_config['name'],
+                node_name=node_name,
                 access_token=access_token
             )
             
             if comment_result['success']:
                 print(f"✅ Hoàn thành xử lý phê duyệt {instance_code}")
-                print(f"💰 Loại: {qr_type.upper()} | Số tiền: {amount_int:,} VND")
-                print(f"🏷️ Node: {node_config['name']} | Trạng thái: {matched_status}")
-                print(f"📋 Trường: {field_used} | Chiến lược: {node_strategy}")
+                print(f"💰 Loại: {qr_type.upper()} LẦN {active_advance_info['advance_round']} | Số tiền: {amount_int:,} VND")
+                print(f"🏷️ Node: {node_name}")
+                print(f"📋 Trường: {field_used}")
                 print(f"💬 ID Comment: {comment_result['comment_id']}")
                 return True
             else:
